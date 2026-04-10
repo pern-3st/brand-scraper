@@ -1,0 +1,21 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# mypy / pyright
+.mypy_cache/
+.pyright/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
