@@ -17,3 +17,7 @@ Thumbs.db
 
 # Misc
 *.log
+
+# Spike test capture fixtures
+backend/scripts/shopee_spike_captures/*
+!backend/scripts/shopee_spike_captures/.gitkeep

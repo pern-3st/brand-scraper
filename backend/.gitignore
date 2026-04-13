@@ -19,3 +19,8 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# scrape output + persistent browser profiles
+data/browser_profiles/
+data/scrapes/
+data/shopee/

@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import asyncio
-import json
 import logging
 import os
+from typing import AsyncIterator
 from urllib.parse import urlparse
 
 from browser_use import Agent, BrowserProfile, BrowserSession, ChatOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from app.models import CategoryResult, ScrapeResponse
-from app.session import QueueLogHandler, ScrapeSession
+from app.models import CategoryResult, OfficialSiteScrapeRequest
+from app.platforms.base import ScrapeContext
+from app.session import QueueLogHandler
 
 load_dotenv()
 
@@ -21,14 +24,14 @@ class PriceExtractionResult(BaseModel):
     products_scanned: int = 0
 
 
-async def scrape_category(
+async def _scrape_category(
     browser: BrowserSession,
     llm: ChatOpenAI,
     brand_url: str,
     section: str,
     category: str,
     max_products: int,
-    cancel_event: asyncio.Event | None = None,
+    cancel_event: asyncio.Event,
 ) -> tuple[CategoryResult, str]:
     """Scrape a single category and return the result plus detected currency."""
     section_hints = {
@@ -72,7 +75,7 @@ STEP 5 — RETURN RESULTS
 """
 
     async def should_stop() -> bool:
-        return cancel_event is not None and cancel_event.is_set()
+        return cancel_event.is_set()
 
     agent = Agent(
         task=task,
@@ -107,88 +110,48 @@ STEP 5 — RETURN RESULTS
     ), result.currency
 
 
-async def run_scrape_streaming(session: ScrapeSession) -> None:
-    """Run the full scrape, emitting SSE events to session.queue."""
-    request = session.request
-    bu_logger = logging.getLogger("browser_use")
-    handler = QueueLogHandler(session.queue)
-    handler.setLevel(logging.INFO)
-    bu_logger.addHandler(handler)
+class OfficialSiteScraper:
+    sse_event_name = "category_complete"
+    platform_key = "official_site"
 
-    try:
+    def brand_slug(self, request: OfficialSiteScrapeRequest) -> str:
+        return urlparse(str(request.brand_url)).netloc
+
+    async def stream_products(
+        self,
+        request: OfficialSiteScrapeRequest,
+        ctx: ScrapeContext,
+    ) -> AsyncIterator[CategoryResult]:
+        bu_logger = logging.getLogger("browser_use")
+        handler = QueueLogHandler(ctx.queue)
+        handler.setLevel(logging.INFO)
+        bu_logger.addHandler(handler)
+
         api_key = os.getenv("OPENROUTER_API_KEY", "")
         model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-20250514")
-
         llm = ChatOpenAI(
             model=model,
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key,
         )
 
-        brand_url = str(request.brand_url)
-        brand = urlparse(brand_url).netloc
-
         profile = BrowserProfile(headless=False, keep_alive=True, channel="chrome")
         browser = BrowserSession(browser_profile=profile)
 
         try:
-            results: list[CategoryResult] = []
-            detected_currency = "£"
-
             for category in request.categories:
-                # Check for cancellation between categories
-                if session.cancel_event.is_set():
-                    session.queue.put_nowait({
-                        "event": "cancelled",
-                        "data": json.dumps(
-                            ScrapeResponse(
-                                brand=brand,
-                                section=request.section,
-                                currency=detected_currency,
-                                results=results,
-                            ).model_dump()
-                        ),
-                    })
+                if ctx.cancel_event.is_set():
                     return
-
-                cat_result, currency = await scrape_category(
+                cat_result, _currency = await _scrape_category(
                     browser=browser,
                     llm=llm,
-                    brand_url=brand_url,
+                    brand_url=str(request.brand_url),
                     section=request.section,
                     category=category,
                     max_products=request.max_products,
-                    cancel_event=session.cancel_event,
+                    cancel_event=ctx.cancel_event,
                 )
-                if currency:
-                    detected_currency = currency
-                results.append(cat_result)
-
-                session.queue.put_nowait({
-                    "event": "category_complete",
-                    "data": json.dumps(cat_result.model_dump()),
-                })
-
-            session.queue.put_nowait({
-                "event": "done",
-                "data": json.dumps(
-                    ScrapeResponse(
-                        brand=brand,
-                        section=request.section,
-                        currency=detected_currency,
-                        results=results,
-                    ).model_dump()
-                ),
-            })
-
+                yield cat_result
         finally:
             await browser.stop()
-
-    except Exception as e:
-        session.queue.put_nowait({
-            "event": "error",
-            "data": json.dumps({"message": str(e)}),
-        })
-
-    finally:
-        bu_logger.removeHandler(handler)
+            bu_logger.removeHandler(handler)

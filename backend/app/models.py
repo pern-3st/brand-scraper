@@ -1,7 +1,12 @@
-from pydantic import BaseModel, HttpUrl
+from typing import Annotated, Literal, Union
+
+from pydantic import BaseModel, Field, HttpUrl
+
+from app.platforms.shopee.models import ShopeeScrapeRequest  # forward; created in Phase 2B
 
 
-class ScrapeRequest(BaseModel):
+class OfficialSiteScrapeRequest(BaseModel):
+    platform: Literal["official_site"] = "official_site"
     brand_url: HttpUrl
     section: str
     categories: list[str]
@@ -16,11 +21,10 @@ class CategoryResult(BaseModel):
     products_scanned: int = 0
 
 
-class ScrapeResponse(BaseModel):
-    brand: str
-    section: str
-    currency: str
-    results: list[CategoryResult]
+ScrapeRequest = Annotated[
+    Union[OfficialSiteScrapeRequest, ShopeeScrapeRequest],
+    Field(discriminator="platform"),
+]
 
 
 class ScrapeStartResponse(BaseModel):

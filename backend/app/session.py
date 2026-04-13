@@ -15,6 +15,7 @@ class ScrapeSession:
     request: ScrapeRequest
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    login_event: asyncio.Event = field(default_factory=asyncio.Event)
     task: asyncio.Task | None = None
 
 
