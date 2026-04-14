@@ -13,6 +13,9 @@ Thumbs.db
 # Local runtime settings (contains OpenRouter API key)
 backend/data/settings.json
 
+# Local scrape data
+backend/data/brands/
+
 # IDE
 .idea/
 .vscode/

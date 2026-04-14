@@ -112,7 +112,9 @@ error message — screenshot it and send it along when asking for help.
 
 Common causes:
 - Antivirus is scanning `node_modules` — wait and try again.
-- `backend/.env` is missing or has an invalid OpenRouter API key.
+- The OpenRouter API key hasn't been entered yet — open the app, click the
+  gear icon, and paste your key. (The key is only required to start a
+  scrape, not to launch the app.)
 
 ### Setup got interrupted or failed partway
 

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
+from app import settings as app_settings
 from app.brands import BrandAlreadyExists
 from app.models import ScrapeRequest, ScrapeStartResponse
 from app.runner import get_repo, run_scrape
@@ -259,3 +260,33 @@ async def login_complete(scrape_id: str):
         raise HTTPException(status_code=404, detail="Scrape session not found")
     session.login_event.set()
     return {"status": "resumed"}
+
+
+# ---- settings endpoints ----
+
+class SettingsOut(BaseModel):
+    openrouter_api_key_set: bool
+    openrouter_api_key_hint: str
+    openrouter_model: str
+
+
+class UpdateSettingsIn(BaseModel):
+    openrouter_api_key: str | None = None
+    openrouter_model: str | None = None
+
+
+@app.get("/api/settings", response_model=SettingsOut)
+async def get_settings() -> SettingsOut:
+    return SettingsOut(**app_settings.masked_view())
+
+
+@app.put("/api/settings", response_model=SettingsOut)
+async def update_settings(payload: UpdateSettingsIn) -> SettingsOut:
+    key = payload.openrouter_api_key
+    if key is not None:
+        key = key.strip()
+    model = payload.openrouter_model
+    if model is not None:
+        model = model.strip()
+    app_settings.save(openrouter_api_key=key, openrouter_model=model)
+    return SettingsOut(**app_settings.masked_view())

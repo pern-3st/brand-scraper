@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 # Packages the repo into a Windows-ready zip for distribution to non-technical users.
-# Must be run from the repo root. Requires backend/.env to exist (will be baked into the zip).
+# Must be run from the repo root. The recipient pastes their OpenRouter API key
+# into the dashboard settings modal after launching the app, so the zip no
+# longer needs to contain one.
 
 set -euo pipefail
-
-if [[ ! -f backend/.env ]]; then
-  echo "ERROR: backend/.env not found. Create it with the OPENROUTER_API_KEY you want" >&2
-  echo "       to ship to the recipient before running this script." >&2
-  exit 1
-fi
 
 OUT_DIR="dist"
 STAGE="$OUT_DIR/brand_scraper_windows"
@@ -17,9 +13,8 @@ ZIP="$OUT_DIR/brand_scraper_windows.zip"
 rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
 
-# Copy tracked files only, plus backend/.env which is gitignored.
+# Copy tracked files only.
 git ls-files -z | tar --null -T - -cf - | (cd "$STAGE" && tar -xf -)
-cp backend/.env "$STAGE/backend/.env"
 
 # Strip anything the recipient doesn't need.
 # Note: frontend/ is a gitlink in this repo, so tar pulls in the whole working
@@ -40,7 +35,6 @@ REQUIRED=(
   "$STAGE/windows/run.bat"
   "$STAGE/windows/stop.bat"
   "$STAGE/windows/HOW_TO_USE.txt"
-  "$STAGE/backend/.env"
   "$STAGE/backend/pyproject.toml"
   "$STAGE/frontend/package.json"
 )

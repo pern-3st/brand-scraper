@@ -20,12 +20,11 @@ uv sync
 uv run patchright install chromium
 ```
 
-Create `backend/.env`:
-
-```
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=x-ai/grok-4.1-fast
-```
+The OpenRouter API key is configured from the UI — click the gear icon
+on the dashboard after starting the app. The key is stored locally in
+`backend/data/settings.json` (gitignored). If you prefer env vars,
+`OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `backend/.env` still work
+as a fallback.
 
 ### Run
 
@@ -82,10 +81,10 @@ windows/     One-click bundle scripts for non-technical Windows users
 
 To share a runnable copy with a non-technical Windows user:
 
-1. Ensure `backend/.env` exists locally with a real `OPENROUTER_API_KEY`.
-   **This key will be embedded in the zip — use a dedicated key with a spend cap.**
-2. Run `scripts/package_windows.sh` to produce `dist/brand_scraper_windows.zip`.
-3. Send them the zip. They extract it, open the `windows/` folder, and
+1. Run `scripts/package_windows.sh` to produce `dist/brand_scraper_windows.zip`.
+2. Send them the zip. They extract it, open the `windows/` folder, and
    double-click `setup.bat` once, then `run.bat` every time.
+3. Tell the recipient to open the app, click the gear icon on the dashboard,
+   and paste their OpenRouter API key — keys are no longer bundled into the zip.
 
 See `windows/HOW_TO_USE.txt` for the recipient-facing instructions.

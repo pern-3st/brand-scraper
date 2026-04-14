@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import AsyncIterator
 from urllib.parse import urlparse
 
@@ -10,6 +9,7 @@ from browser_use import Agent, BrowserProfile, BrowserSession, ChatOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
+from app import settings
 from app.models import CategoryResult, OfficialSiteScrapeRequest
 from app.platforms.base import ScrapeContext
 from app.session import QueueLogHandler
@@ -127,8 +127,15 @@ class OfficialSiteScraper:
         handler.setLevel(logging.INFO)
         bu_logger.addHandler(handler)
 
-        api_key = os.getenv("OPENROUTER_API_KEY", "")
-        model = os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-20250514")
+        effective = settings.load()
+        api_key = effective["openrouter_api_key"]
+        model = effective["openrouter_model"]
+        if not api_key:
+            raise RuntimeError(
+                "OpenRouter API key is not configured. Open the dashboard settings "
+                "(gear icon) and paste your key, or set OPENROUTER_API_KEY in the "
+                "environment."
+            )
         llm = ChatOpenAI(
             model=model,
             base_url="https://openrouter.ai/api/v1",

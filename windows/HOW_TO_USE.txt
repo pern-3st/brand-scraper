@@ -25,6 +25,14 @@ EVERY TIME YOU WANT TO USE IT
 4. Your web browser will open the app automatically.
 5. Use the app in your browser.
 
+ENTERING YOUR API KEY (FIRST TIME ONLY)
+---------------------------------------
+1. When the app opens in your browser, click the small gear icon in
+   the top-right of the page.
+2. Paste the OpenRouter API key you were given into the "OpenRouter
+   API key" box and click "Save".
+3. You only need to do this once - the key is saved on your computer.
+
 WHEN YOU ARE DONE
 -----------------
 - Either double-click "stop.bat", OR
@@ -40,5 +48,3 @@ IF SOMETHING GOES WRONG
 DO NOT
 ------
 - Do not delete, move, or rename any files in this folder.
-- Do not edit the file called ".env" inside the "backend" folder -
-  it contains a key that lets the app work.
