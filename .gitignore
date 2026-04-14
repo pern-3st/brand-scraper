@@ -10,6 +10,9 @@ Thumbs.db
 .env.*
 !backend/.env.example
 
+# Local runtime settings (contains OpenRouter API key)
+backend/data/settings.json
+
 # IDE
 .idea/
 .vscode/
@@ -18,6 +21,9 @@ Thumbs.db
 
 # Misc
 *.log
+
+# Build output
+dist/
 
 # Windows bundle runtime marker
 windows/.setup_complete
