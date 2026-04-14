@@ -70,10 +70,10 @@ popd
 
 REM --- Install and build frontend ---
 echo.
-echo Installing frontend dependencies (npm ci)...
+echo Installing frontend dependencies (npm install)...
 pushd frontend
-call npm ci
-if errorlevel 1 (echo ERROR: npm ci failed & popd & popd & pause & exit /b 1)
+call npm install
+if errorlevel 1 (echo ERROR: npm install failed & popd & popd & pause & exit /b 1)
 
 echo Building frontend (npm run build)...
 call npm run build
