@@ -1,24 +1,31 @@
 """Platform-agnostic scrape runner.
 
 Responsibilities:
+- Look up the stored source for {brand_id, source_id}.
+- Rebuild a typed request from source.spec via the pydantic discriminated union.
 - Pick the platform scraper from the registry.
 - Iterate its stream_products async generator.
-- For each yielded record: append to an in-memory list, write the partial
-  file, and emit the scraper's per-item SSE event.
-- On clean finish: emit `done` and rename partial → final.
+- For each yielded record: append, write the partial file, emit per-item SSE.
+- On clean finish: compute+nest aggregates into _meta, emit `done`, rename
+  partial → final.
 - On cancel / error: emit matching event, leave partial file with status.
 """
 from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
+from pydantic import TypeAdapter
+
+from app.brands import BrandRepo, compute_run_aggregates
+from app.models import ScrapeRequest
 from app.platforms.base import ScrapeContext
 from app.platforms.official_site import OfficialSiteScraper
 from app.platforms.shopee import ShopeeScraper
 from app.session import ScrapeSession
-from app.storage import finalize, partial_path, timestamp, write_records
+from app.storage import timestamp, write_records
 
 log = logging.getLogger(__name__)
 
@@ -27,22 +34,50 @@ PLATFORMS = {
     "shopee": ShopeeScraper,
 }
 
+DATA_ROOT = Path(__file__).resolve().parent.parent / "data" / "brands"
+_repo = BrandRepo(root=DATA_ROOT)
+_request_adapter = TypeAdapter(ScrapeRequest)
+
+
+def get_repo() -> BrandRepo:
+    return _repo
+
 
 async def run_scrape(session: ScrapeSession) -> None:
-    request = session.request
-    scraper = PLATFORMS[request.platform]()
+    repo = get_repo()
+    source = repo.get_source(session.brand_id, session.source_id)
+    if source is None:
+        session.queue.put_nowait({
+            "event": "error",
+            "data": json.dumps({"message": f"source {session.source_id} not found"}),
+        })
+        return
+
+    try:
+        request = _request_adapter.validate_python(
+            {"platform": source.platform, **source.spec}
+        )
+    except Exception as exc:
+        log.exception("invalid source spec")
+        session.queue.put_nowait({
+            "event": "error",
+            "data": json.dumps({"message": f"invalid source spec: {exc}"}),
+        })
+        return
+
+    scraper = PLATFORMS[source.platform]()
     ctx = ScrapeContext(
         cancel_event=session.cancel_event,
         login_event=session.login_event,
         queue=session.queue,
     )
 
-    brand_slug = scraper.brand_slug(request)
     ts = timestamp()
-    partial = partial_path(scraper.platform_key, brand_slug, ts)
+    partial = repo.partial_run_path(session.brand_id, session.source_id, ts)
     meta: dict[str, Any] = {
-        "platform": scraper.platform_key,
-        "brand": brand_slug,
+        "platform": source.platform,
+        "brand_id": session.brand_id,
+        "source_id": session.source_id,
         "started_at": ts,
         "request": request.model_dump(mode="json"),
     }
@@ -64,16 +99,24 @@ async def run_scrape(session: ScrapeSession) -> None:
                 "data": json.dumps(record.model_dump(mode="json")),
             })
         else:
-            # generator exhausted cleanly
             status = "ok"
+
+        # On finalize, nest aggregates under _meta["aggregates"] so
+        # misc meta fields (request, started_at, platform, ids) stay separate.
+        record_dicts = [r.model_dump(mode="json") for r in records]
+        meta["aggregates"] = compute_run_aggregates(
+            platform=source.platform, records=record_dicts
+        )
 
         if status == "ok":
             flush("ok")
-            final = finalize(partial)
+            final = repo.finalize_run(partial)
             session.queue.put_nowait({
                 "event": "done",
                 "data": json.dumps({
-                    "brand": brand_slug,
+                    "brand_id": session.brand_id,
+                    "source_id": session.source_id,
+                    "run_id": ts,
                     "count": len(records),
                     "file": str(final),
                 }),
@@ -83,13 +126,16 @@ async def run_scrape(session: ScrapeSession) -> None:
             session.queue.put_nowait({
                 "event": "cancelled",
                 "data": json.dumps({
-                    "brand": brand_slug,
+                    "brand_id": session.brand_id,
+                    "source_id": session.source_id,
+                    "run_id": ts,
                     "count": len(records),
                     "file": str(partial),
                 }),
             })
     except Exception as exc:
         log.exception("scrape failed")
+        meta["error"] = str(exc)
         flush("error")
         session.queue.put_nowait({
             "event": "error",

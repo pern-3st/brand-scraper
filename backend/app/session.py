@@ -4,15 +4,14 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from app.models import ScrapeRequest
-
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @dataclass
 class ScrapeSession:
     id: str
-    request: ScrapeRequest
+    brand_id: str
+    source_id: str
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     login_event: asyncio.Event = field(default_factory=asyncio.Event)
