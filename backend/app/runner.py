@@ -104,9 +104,7 @@ async def run_scrape(session: ScrapeSession) -> None:
         # On finalize, nest aggregates under _meta["aggregates"] so
         # misc meta fields (request, started_at, platform, ids) stay separate.
         record_dicts = [r.model_dump(mode="json") for r in records]
-        meta["aggregates"] = compute_run_aggregates(
-            platform=source.platform, records=record_dicts
-        )
+        meta["aggregates"] = compute_run_aggregates(records=record_dicts)
 
         if status == "ok":
             flush("ok")

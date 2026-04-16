@@ -16,7 +16,7 @@ Approach:
    inspect the open browser window.
 5. Extract per-card fields with a single page.evaluate(EXTRACT_JS) call.
 6. Dedupe against a cumulative set of item_ids. Yield each new record
-   as a ShopeeProductRecord.
+   as a ProductRecord.
 7. Terminate on: zero new item_ids after a navigation, `max_products`
    reached, ctx.cancel_event set, or navigation failure.
 
@@ -40,7 +40,8 @@ from app.platforms.shopee.extract import (
     extract_grid_items,
     shop_handle_from_url,
 )
-from app.platforms.shopee.models import ShopeeProductRecord, ShopeeScrapeRequest
+from app.models import ProductRecord
+from app.platforms.shopee.models import ShopeeScrapeRequest
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class ShopeeScraper:
         self,
         request: ShopeeScrapeRequest,
         ctx: ScrapeContext,
-    ) -> AsyncIterator[ShopeeProductRecord]:
+    ) -> AsyncIterator[ProductRecord]:
         shop_url = str(request.shop_url)
         max_products = request.max_products
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
@@ -177,14 +178,14 @@ async def _wait_for_cards(page) -> bool:
         return False
 
 
-def _to_record(item: dict) -> ShopeeProductRecord | None:
-    """Convert an extract_grid_items dict into a ShopeeProductRecord.
+def _to_record(item: dict) -> ProductRecord | None:
+    """Convert an extract_grid_items dict into a ProductRecord.
 
-    Returns None if required fields (item_id, product_name, product_url)
-    are missing or malformed. The caller logs and skips.
+    Returns None if required Shopee fields (item_id, product_name,
+    product_url) are missing or malformed. The caller logs and skips.
     """
     try:
-        return ShopeeProductRecord(
+        return ProductRecord(
             item_id=int(item["item_id"]),
             product_name=str(item["product_name"]),
             product_url=str(item["product_url"]),

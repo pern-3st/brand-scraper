@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf5ff;
+  --foreground: #3b2e5a;
+  --card: #ffffff;
+  --muted: #f3e8ff;
+  --muted-fg: #8b7daa;
+  --accent: #a855f7;
+  --accent-hover: #9333ea;
+  --accent-soft: #f5e6ff;
+  --success: #4ade80;
+  --success-fg: #166534;
+  --warning: #fbbf24;
+  --warning-fg: #92400e;
+  --danger: #f472b6;
+  --danger-hover: #ec4899;
+  --danger-fg: #9d174d;
+  --border: #e9d5ff;
+  --pink: #f9a8d4;
+  --sky: #7dd3fc;
+  --lime: #bef264;
+  --peach: #fed7aa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-fg: var(--muted-fg);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-fg: var(--success-fg);
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-fg: var(--danger-fg);
+  --color-border: var(--border);
+  --color-pink: var(--pink);
+  --color-sky: var(--sky);
+  --color-lime: var(--lime);
+  --color-peach: var(--peach);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+label[for],
+select:not(:disabled),
+a[href] {
+  cursor: pointer;
+}
+
+/* Log feed animations */
+@keyframes log-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.log-line {
+  animation: log-fade-in 0.2s ease-out both;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}

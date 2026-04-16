@@ -228,40 +228,21 @@ def _new_source_id() -> str:
     return secrets.token_hex(4)  # 8 hex chars — short, collision-resistant at small N
 
 
-def compute_run_aggregates(*, platform: str, records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Platform-aware aggregate computation. Stored in run `_meta["aggregates"]`.
+def compute_run_aggregates(*, records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Platform-agnostic aggregate computation, stored in run `_meta["aggregates"]`.
 
-    Semantics note (intentional asymmetry):
-      - official_site.product_count = sum of `products_scanned` across all
-        category results. Counts products *scanned while searching*, so may
-        exceed the number of unique matches if the scraper revisits pages.
-      - shopee.product_count = len(records). One record per product card.
-    The dashboard labels this "items seen" rather than "products" to avoid
-    implying the two platforms are directly comparable.
+    Both platforms emit `ProductRecord`s, so one formula works everywhere:
+      - product_count: total records in the run
+      - price_min / price_max: min/max over non-null prices
+      - category_count: number of distinct non-null `category` values.
+        Naturally 0 for Shopee (records don't carry a category) and
+        non-zero for official_site.
     """
-    if platform == "official_site":
-        found = [r for r in records if r.get("status") == "found"]
-        prices: list[float] = []
-        for r in found:
-            lo, hi = r.get("lowest_price"), r.get("highest_price")
-            if lo is not None:
-                prices.append(float(lo))
-            if hi is not None:
-                prices.append(float(hi))
-        return {
-            "product_count": sum(int(r.get("products_scanned") or 0) for r in records),
-            "price_min": min(prices) if prices else None,
-            "price_max": max(prices) if prices else None,
-            "category_count": len(found),
-        }
-
-    if platform == "shopee":
-        prices = [float(r["price"]) for r in records if r.get("price") is not None]
-        return {
-            "product_count": len(records),
-            "price_min": min(prices) if prices else None,
-            "price_max": max(prices) if prices else None,
-            "category_count": None,
-        }
-
-    raise ValueError(f"unknown platform {platform!r}")
+    prices = [float(r["price"]) for r in records if r.get("price") is not None]
+    categories = {r["category"] for r in records if r.get("category")}
+    return {
+        "product_count": len(records),
+        "price_min": min(prices) if prices else None,
+        "price_max": max(prices) if prices else None,
+        "category_count": len(categories),
+    }

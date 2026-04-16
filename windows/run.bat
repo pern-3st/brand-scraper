@@ -12,9 +12,9 @@ if not exist "%~dp0.setup_complete" (
 )
 
 REM --- Ensure ports 8000 and 3000 are free ---
-call :check_port 8000 "Backend (uvicorn)"
+call :check_port 8000 Backend
 if errorlevel 1 (popd & pause & exit /b 1)
-call :check_port 3000 "Frontend (next)"
+call :check_port 3000 Frontend
 if errorlevel 1 (popd & pause & exit /b 1)
 
 REM --- Launch backend in its own window ---
@@ -52,9 +52,11 @@ exit /b 0
 
 :check_port
 netstat -ano | findstr /r /c:":%~1 .*LISTENING" >nul
-if not errorlevel 1 (
-    echo ERROR: Port %~1 is already in use. %~2 cannot start.
-    echo Close the app using that port, or run stop.bat, then try again.
-    exit /b 1
-)
+if errorlevel 1 goto :port_free
+echo ERROR: Port %~1 is already in use. %~2 cannot start.
+echo Close the app using that port, or run stop.bat, then try again.
+echo.
+echo If you don't know what is using it, try restarting your PC.
+exit /b 1
+:port_free
 exit /b 0

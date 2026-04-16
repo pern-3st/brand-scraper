@@ -70,14 +70,36 @@ popd
 
 REM --- Install and build frontend ---
 echo.
+if not exist "frontend\package.json" (
+    echo ERROR: frontend\package.json is missing. You probably extracted the wrong zip.
+    echo Make sure you are using brand_scraper_windows.zip, not a GitHub source download.
+    popd
+    pause
+    exit /b 1
+)
+
 echo Installing frontend dependencies (npm install)...
 pushd frontend
 call npm install
-if errorlevel 1 (echo ERROR: npm install failed & popd & popd & pause & exit /b 1)
+set "NPM_RC=%ERRORLEVEL%"
+if not "%NPM_RC%"=="0" (
+    echo ERROR: npm install failed with exit code %NPM_RC%
+    popd
+    popd
+    pause
+    exit /b 1
+)
 
 echo Building frontend (npm run build)...
 call npm run build
-if errorlevel 1 (echo ERROR: npm run build failed & popd & popd & pause & exit /b 1)
+set "NPM_RC=%ERRORLEVEL%"
+if not "%NPM_RC%"=="0" (
+    echo ERROR: npm run build failed with exit code %NPM_RC%
+    popd
+    popd
+    pause
+    exit /b 1
+)
 popd
 
 REM --- Mark setup complete ---

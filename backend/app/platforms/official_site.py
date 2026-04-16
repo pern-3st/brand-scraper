@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import AsyncIterator
 from urllib.parse import urlparse
 
@@ -10,18 +11,31 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from app import settings
-from app.models import CategoryResult, OfficialSiteScrapeRequest
+from app.models import OfficialSiteScrapeRequest, ProductRecord
 from app.platforms.base import ScrapeContext
 from app.session import QueueLogHandler
 
 load_dotenv()
 
 
-class PriceExtractionResult(BaseModel):
+class ProductExtraction(BaseModel):
+    """A single product the agent extracted from a category listing."""
+    name: str
+    price: float | None = None           # visible selling price
+    original_price: float | None = None  # strikethrough / "was" / RRP price
+    url: str | None = None               # product detail page URL
+
+
+class ProductExtractionResult(BaseModel):
     found: bool
     currency: str = ""
-    prices: list[float] = []
-    products_scanned: int = 0
+    products: list[ProductExtraction] = []
+
+
+def _infer_discount_pct(price: float | None, mrp: float | None) -> int | None:
+    if price is None or mrp is None or mrp <= 0 or mrp <= price:
+        return None
+    return int(round((mrp - price) / mrp * 100))
 
 
 async def _scrape_category(
@@ -32,8 +46,8 @@ async def _scrape_category(
     category: str,
     max_products: int,
     cancel_event: asyncio.Event,
-) -> tuple[CategoryResult, str]:
-    """Scrape a single category and return the result plus detected currency."""
+) -> list[ProductRecord]:
+    """Scrape a single category, returning a list of ProductRecords."""
     section_hints = {
         "mens": 'adult men only — look for "Men" or "Menswear". Do NOT include boys or kids.',
         "womens": 'adult women only — look for "Women" or "Womenswear". Do NOT include girls or kids.',
@@ -41,7 +55,7 @@ async def _scrape_category(
     }
     hint = section_hints.get(section, f'the "{section}" department')
 
-    task = f"""You are collecting prices from a clothing website. Follow these steps exactly.
+    task = f"""You are collecting product listings from a clothing website. Follow these steps exactly.
 
 STEP 1 — NAVIGATE VIA MENUS (mandatory)
 - Go to {brand_url}
@@ -56,22 +70,25 @@ STEP 2 — FIND THE CATEGORY
 - If you cannot find this category after exploring the {section} navigation, return found=false immediately.
 
 STEP 3 — VERIFY YOU ARE IN THE CORRECT SECTION
-- Before collecting any prices, check the page URL and breadcrumbs.
+- Before collecting products, check the page URL and breadcrumbs.
 - Confirm the page is specifically for the "{section}" section, not any other section.
 - If the page shows mixed sections or a different section, go back and navigate correctly.
 
-STEP 4 — COLLECT PRICES (up to {max_products} unique products)
-- Scan the product listing page. For each product:
-  - If it shows a strikethrough/original/"was"/"RRP" price, capture that original price.
-  - Otherwise capture the displayed selling price.
-- Track products by name or position to avoid duplicates. Each product should appear in your
+STEP 4 — COLLECT PRODUCTS (up to {max_products} unique products)
+- Scan the product listing page. For each product, capture:
+  - name: the product's display name
+  - price: the visible selling price (what you'd actually pay today)
+  - original_price: if the product shows a strikethrough / "was" / "RRP" price,
+    capture that value here. Otherwise leave original_price null.
+  - url: the product detail page link if available (absolute or relative)
+- Track products by name to avoid duplicates. Each product should appear in your
   list only ONCE. If you scroll and see products you already recorded, skip them.
-- Stop once you have {max_products} unique product prices.
-- Do NOT keep scrolling or re-scanning after you have enough prices.
+- Stop once you have {max_products} unique products.
+- Do NOT keep scrolling or re-scanning after you have enough products.
 
 STEP 5 — RETURN RESULTS
-- Return the list of unique prices, the currency symbol, found=true, and products_scanned
-  equal to the number of unique products you collected.
+- Return the list of unique products, the currency symbol, and found=true.
+- If you could not locate any products (empty listing page), return found=false.
 """
 
     async def should_stop() -> bool:
@@ -81,7 +98,7 @@ STEP 5 — RETURN RESULTS
         task=task,
         llm=llm,
         browser=browser,
-        output_model_schema=PriceExtractionResult,
+        output_model_schema=ProductExtractionResult,
         max_steps=30,
         max_failures=3,
         register_should_stop_callback=should_stop,
@@ -91,27 +108,31 @@ STEP 5 — RETURN RESULTS
     raw = history.final_result()
 
     if raw:
-        result = PriceExtractionResult.model_validate_json(raw)
+        result = ProductExtractionResult.model_validate_json(raw)
     else:
-        result = PriceExtractionResult(found=False)
+        result = ProductExtractionResult(found=False)
 
-    if not result.found or not result.prices:
-        return CategoryResult(
+    if not result.found or not result.products:
+        return []
+
+    now = datetime.now(timezone.utc)
+    records: list[ProductRecord] = []
+    for p in result.products:
+        records.append(ProductRecord(
+            product_name=p.name,
+            product_url=p.url,
+            price=p.price,
+            mrp=p.original_price,
+            currency=result.currency,
+            discount_pct=_infer_discount_pct(p.price, p.original_price),
             category=category,
-            status="not_found",
-        ), result.currency
-
-    return CategoryResult(
-        category=category,
-        status="found",
-        lowest_price=min(result.prices),
-        highest_price=max(result.prices),
-        products_scanned=result.products_scanned or len(result.prices),
-    ), result.currency
+            scraped_at=now,
+        ))
+    return records
 
 
 class OfficialSiteScraper:
-    sse_event_name = "category_complete"
+    sse_event_name = "product"
     platform_key = "official_site"
 
     def brand_slug(self, request: OfficialSiteScrapeRequest) -> str:
@@ -121,7 +142,7 @@ class OfficialSiteScraper:
         self,
         request: OfficialSiteScrapeRequest,
         ctx: ScrapeContext,
-    ) -> AsyncIterator[CategoryResult]:
+    ) -> AsyncIterator[ProductRecord]:
         bu_logger = logging.getLogger("browser_use")
         handler = QueueLogHandler(ctx.queue)
         handler.setLevel(logging.INFO)
@@ -149,7 +170,7 @@ class OfficialSiteScraper:
             for category in request.categories:
                 if ctx.cancel_event.is_set():
                     return
-                cat_result, _currency = await _scrape_category(
+                records = await _scrape_category(
                     browser=browser,
                     llm=llm,
                     brand_url=str(request.brand_url),
@@ -158,7 +179,10 @@ class OfficialSiteScraper:
                     max_products=request.max_products,
                     cancel_event=ctx.cancel_event,
                 )
-                yield cat_result
+                for record in records:
+                    if ctx.cancel_event.is_set():
+                        return
+                    yield record
         finally:
             await browser.stop()
             bu_logger.removeHandler(handler)

@@ -104,37 +104,45 @@ from app.brands import compute_run_aggregates
 
 def test_aggregates_official_site_records():
     records = [
-        {"category": "shoes", "status": "found", "lowest_price": 42.0, "highest_price": 189.0, "products_scanned": 20},
-        {"category": "bags",  "status": "found", "lowest_price": 30.0, "highest_price": 150.0, "products_scanned": 10},
-        {"category": "hats",  "status": "not_found", "lowest_price": None, "highest_price": None, "products_scanned": 0},
+        {"product_name": "A", "category": "shoes", "price": 42.0},
+        {"product_name": "B", "category": "shoes", "price": 189.0},
+        {"product_name": "C", "category": "bags",  "price": 30.0},
+        {"product_name": "D", "category": "bags",  "price": 150.0},
+        {"product_name": "E", "category": "bags",  "price": None},
     ]
-    agg = compute_run_aggregates(platform="official_site", records=records)
+    agg = compute_run_aggregates(records=records)
     assert agg == {
-        "product_count": 30,
+        "product_count": 5,
         "price_min": 30.0,
         "price_max": 189.0,
-        "category_count": 2,  # found only
+        "category_count": 2,
     }
 
 
 def test_aggregates_shopee_records():
+    # Shopee records carry no `category`; category_count naturally falls to 0.
     records = [
-        {"item_id": 1, "price": 20.0},
-        {"item_id": 2, "price": 50.0},
-        {"item_id": 3, "price": None},  # ignored in price range
+        {"product_name": "A", "item_id": 1, "price": 20.0},
+        {"product_name": "B", "item_id": 2, "price": 50.0},
+        {"product_name": "C", "item_id": 3, "price": None},
     ]
-    agg = compute_run_aggregates(platform="shopee", records=records)
+    agg = compute_run_aggregates(records=records)
     assert agg == {
         "product_count": 3,
         "price_min": 20.0,
         "price_max": 50.0,
-        "category_count": None,  # not meaningful for shopee
+        "category_count": 0,
     }
 
 
 def test_aggregates_empty():
-    agg = compute_run_aggregates(platform="official_site", records=[])
-    assert agg == {"product_count": 0, "price_min": None, "price_max": None, "category_count": 0}
+    agg = compute_run_aggregates(records=[])
+    assert agg == {
+        "product_count": 0,
+        "price_min": None,
+        "price_max": None,
+        "category_count": 0,
+    }
 
 
 def test_list_runs_newest_first_skips_partial(repo, tmp_path):
