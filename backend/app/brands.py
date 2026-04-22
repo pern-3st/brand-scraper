@@ -192,6 +192,13 @@ class BrandRepo:
             return None
         return json.loads(path.read_text())
 
+    def delete_run(self, brand_id: str, source_id: str, run_id: str) -> bool:
+        path = self._runs_dir(brand_id, source_id) / f"{run_id}.json"
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
     def partial_run_path(self, brand_id: str, source_id: str, run_id: str) -> Path:
         rdir = self._runs_dir(brand_id, source_id)
         rdir.mkdir(parents=True, exist_ok=True)

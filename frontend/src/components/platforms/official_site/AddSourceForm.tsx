@@ -13,7 +13,6 @@ export default function AddSourceForm({
   initialSpec?: Record<string, unknown>;
   submitLabel?: string;
 }) {
-  const [brandName, setBrandName] = useState("");
   const [brandUrl, setBrandUrl] = useState(
     typeof initialSpec?.brand_url === "string" ? initialSpec.brand_url : "",
   );
@@ -36,9 +35,7 @@ export default function AddSourceForm({
   return (
     <div className="space-y-4">
       <BrandInput
-        brandName={brandName}
         brandUrl={brandUrl}
-        onBrandNameChange={setBrandName}
         onBrandUrlChange={setBrandUrl}
       />
       <SectionCategorySelector

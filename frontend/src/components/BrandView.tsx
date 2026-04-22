@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBrand, listRuns } from "@/lib/api";
+import { deleteRun, getBrand, listRuns } from "@/lib/api";
 import type { BrandDetail, RunSummary, Source } from "@/types";
 import AddSourceDrawer from "./AddSourceDrawer";
 import { formatPlatform } from "@/lib/format";
@@ -77,6 +77,16 @@ export default function BrandView({
         sources={detail.sources}
         runsBySource={runsBySource}
         onOpenRun={onOpenRun}
+        onDeleteRun={async (sourceId, runId) => {
+          if (!confirm("Delete this history entry? This cannot be undone.")) return;
+          try {
+            await deleteRun(brandId, sourceId, runId);
+          } catch (err) {
+            alert(`Failed to delete run: ${err instanceof Error ? err.message : String(err)}`);
+            return;
+          }
+          await reload();
+        }}
       />
 
       <AddSourceDrawer
@@ -173,10 +183,12 @@ function HistoryList({
   sources,
   runsBySource,
   onOpenRun,
+  onDeleteRun,
 }: {
   sources: Source[];
   runsBySource: Record<string, RunSummary[]>;
   onOpenRun: (sourceId: string, runId: string) => void;
+  onDeleteRun: (sourceId: string, runId: string) => void | Promise<void>;
 }) {
   const entries = sources
     .flatMap((source) =>
@@ -193,20 +205,30 @@ function HistoryList({
       </h3>
       <ul className="divide-y divide-border">
         {entries.map(({ source, run }) => (
-          <li key={`${source.id}:${run.id}`}>
+          <li
+            key={`${source.id}:${run.id}`}
+            className="group flex items-center gap-4 py-3 px-1 text-sm hover:bg-foreground/[0.02]"
+          >
             <button
               onClick={() => onOpenRun(source.id, run.id)}
-              className="w-full flex items-center gap-4 py-3 px-1 text-sm hover:bg-foreground/[0.02]"
+              className="flex items-center gap-4 flex-1 min-w-0 text-left"
             >
-              <span className="text-foreground/80 text-left shrink-0">
+              <span className="text-foreground/80 shrink-0">
                 {formatRunDate(run.id)}
               </span>
-              <span className="text-muted-fg text-left flex-1 truncate">
+              <span className="text-muted-fg flex-1 truncate">
                 {formatPlatform(source.platform)}
               </span>
               <span className="text-muted-fg shrink-0">
                 {formatStatus(run)}
               </span>
+            </button>
+            <button
+              onClick={() => onDeleteRun(source.id, run.id)}
+              aria-label="Delete history entry"
+              className="text-xs text-foreground/40 hover:text-red-500 uppercase tracking-wider shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              Delete
             </button>
           </li>
         ))}
@@ -223,7 +245,19 @@ function formatStatus(run: RunSummary): string {
 }
 
 function describeSpec(s: Source): string {
-  if (s.platform === "official_site") return String(s.spec.brand_url ?? "");
+  if (s.platform === "official_site") {
+    const parts: string[] = [String(s.spec.brand_url ?? "")];
+    if (typeof s.spec.section === "string" && s.spec.section) {
+      parts.push(s.spec.section);
+    }
+    if (Array.isArray(s.spec.categories) && s.spec.categories.length > 0) {
+      const cats = (s.spec.categories as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      );
+      if (cats.length > 0) parts.push(cats.join(", "));
+    }
+    return parts.join(" · ");
+  }
   if (s.platform === "shopee") return String(s.spec.shop_url ?? "");
   return "";
 }

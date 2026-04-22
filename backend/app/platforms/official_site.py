@@ -24,6 +24,8 @@ class ProductExtraction(BaseModel):
     price: float | None = None           # visible selling price
     original_price: float | None = None  # strikethrough / "was" / RRP price
     url: str | None = None               # product detail page URL
+    image_url: str | None = None         # product thumbnail image URL
+    is_sold_out: bool = False            # true if the card shows sold-out / out-of-stock
 
 
 class ProductExtractionResult(BaseModel):
@@ -81,6 +83,15 @@ STEP 4 — COLLECT PRODUCTS (up to {max_products} unique products)
   - original_price: if the product shows a strikethrough / "was" / "RRP" price,
     capture that value here. Otherwise leave original_price null.
   - url: the product detail page link if available (absolute or relative)
+  - image_url: the URL of the product's thumbnail image on the listing card
+    (absolute or relative). This is the `src` of the <img> on the card, not
+    the image bytes.
+  - is_sold_out: true if the card clearly shows the product is sold out /
+    out of stock / unavailable. Otherwise false.
+- ONLY include individual single items. Skip multi-packs, bundles, gift sets,
+  and multi-item kits — e.g. "3-pack cotton t-shirts", "Pack of 5 socks",
+  "Bundle of 2", "Set of 3". If the product name or card explicitly signals
+  more than one unit, do not include it.
 - Track products by name to avoid duplicates. Each product should appear in your
   list only ONCE. If you scroll and see products you already recorded, skip them.
 - Stop once you have {max_products} unique products.
@@ -121,10 +132,12 @@ STEP 5 — RETURN RESULTS
         records.append(ProductRecord(
             product_name=p.name,
             product_url=p.url,
+            image_url=p.image_url,
             price=p.price,
             mrp=p.original_price,
             currency=result.currency,
             discount_pct=_infer_discount_pct(p.price, p.original_price),
+            is_sold_out=p.is_sold_out,
             category=category,
             scraped_at=now,
         ))

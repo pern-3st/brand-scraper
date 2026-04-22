@@ -13,7 +13,7 @@ interface SectionCategorySelectorProps {
 
 const SECTIONS = ["mens", "womens", "kids"];
 const MAX_MIN = 5;
-const MAX_MAX = 50;
+const MAX_MAX = 500;
 const MAX_STEP = 5;
 
 

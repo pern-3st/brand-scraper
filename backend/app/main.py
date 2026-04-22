@@ -197,6 +197,17 @@ async def get_run(brand_id: str, source_id: str, run_id: str):
     return payload
 
 
+@app.delete("/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}", status_code=204)
+async def delete_run(brand_id: str, source_id: str, run_id: str):
+    repo = get_repo()
+    for sess in sessions.values():
+        if getattr(sess, "brand_id", None) == brand_id and getattr(sess, "source_id", None) == source_id:
+            raise HTTPException(409, "cannot delete run while a scrape is in flight for this source")
+    if not repo.delete_run(brand_id, source_id, run_id):
+        raise HTTPException(404, f"run {run_id!r} not found")
+    return None
+
+
 # ---- scrape endpoints (reshape in Task 1.9) ----
 
 class StartScrapeIn(BaseModel):

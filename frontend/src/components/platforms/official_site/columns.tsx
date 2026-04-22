@@ -6,6 +6,24 @@ function formatPrice(currency: string, v: number): string {
 
 export const officialSiteColumns: Column[] = [
   {
+    key: "image",
+    label: "Image",
+    className: "px-4",
+    headClassName: "px-4 w-16",
+    render: (p) =>
+      p.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={p.image_url}
+          alt=""
+          className="h-12 w-12 rounded-lg object-cover ring-1 ring-border"
+          loading="lazy"
+        />
+      ) : (
+        <div className="h-12 w-12 rounded-lg bg-muted ring-1 ring-border" />
+      ),
+  },
+  {
     key: "category",
     label: "Category",
     className: "px-4 whitespace-nowrap text-foreground/70",
@@ -60,6 +78,20 @@ export const officialSiteColumns: Column[] = [
         </span>
       ) : (
         <span className="text-muted-fg">—</span>
+      ),
+  },
+  {
+    key: "stock",
+    label: "Status",
+    className: "px-3 whitespace-nowrap",
+    headClassName: "px-3",
+    render: (p) =>
+      p.is_sold_out ? (
+        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground/50">
+          Sold out
+        </span>
+      ) : (
+        ""
       ),
   },
 ];

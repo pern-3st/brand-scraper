@@ -23,7 +23,7 @@ from app.brands import BrandRepo, compute_run_aggregates
 from app.models import ScrapeRequest
 from app.platforms.base import ScrapeContext
 from app.platforms.official_site import OfficialSiteScraper
-from app.platforms.shopee import ShopeeScraper
+from app.platforms.shopee.scraper import ShopeeScraper
 from app.session import ScrapeSession
 from app.storage import timestamp, write_records
 

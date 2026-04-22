@@ -101,6 +101,21 @@ export async function getRun(
   );
 }
 
+export async function deleteRun(
+  brandId: string,
+  sourceId: string,
+  runId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok && res.status !== 204) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+}
+
 export async function startScrape(
   brandId: string,
   sourceId: string
