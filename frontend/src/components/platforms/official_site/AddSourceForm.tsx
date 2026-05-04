@@ -3,12 +3,17 @@
 import { useState } from "react";
 import BrandInput from "./BrandInput";
 import SectionCategorySelector from "./SectionCategorySelector";
+import type { Source } from "@/types";
 
 export default function AddSourceForm({
+  brandId,
+  sources,
   onSubmit,
   initialSpec,
   submitLabel = "Add source",
 }: {
+  brandId: string;
+  sources: Source[];
   onSubmit: (spec: Record<string, unknown>) => void;
   initialSpec?: Record<string, unknown>;
   submitLabel?: string;
@@ -16,15 +21,18 @@ export default function AddSourceForm({
   const [brandUrl, setBrandUrl] = useState(
     typeof initialSpec?.brand_url === "string" ? initialSpec.brand_url : "",
   );
-  const [section, setSection] = useState(
-    typeof initialSpec?.section === "string" ? initialSpec.section : "mens",
-  );
+  const initialSection =
+    typeof initialSpec?.section === "string" ? initialSpec.section : "mens";
+  const [section, setSection] = useState(initialSection);
+  const initialCategoriesForSection: string[] = Array.isArray(
+    initialSpec?.categories,
+  )
+    ? (initialSpec!.categories as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      )
+    : [];
   const [categories, setCategories] = useState<string[]>(
-    Array.isArray(initialSpec?.categories)
-      ? (initialSpec!.categories as unknown[]).filter(
-          (c): c is string => typeof c === "string",
-        )
-      : [],
+    initialCategoriesForSection,
   );
   const [maxProducts, setMaxProducts] = useState(
     typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 10,
@@ -37,6 +45,12 @@ export default function AddSourceForm({
 
   const canSubmit = brandUrl.trim() !== "" && categories.length > 0;
 
+  // Only surface initialCategories to the selector while the user is still on
+  // the original section of the edited source — switching sections clears the
+  // selection anyway, so the union is no longer meaningful.
+  const initialCategoriesForSelector =
+    initialSpec && section === initialSection ? initialCategoriesForSection : [];
+
   return (
     <div className="space-y-4">
       <BrandInput
@@ -44,10 +58,13 @@ export default function AddSourceForm({
         onBrandUrlChange={setBrandUrl}
       />
       <SectionCategorySelector
+        brandId={brandId}
         section={section}
         selectedCategories={categories}
         maxProducts={maxProducts}
         skipMenuNavigation={skipMenuNavigation}
+        sources={sources}
+        initialCategories={initialCategoriesForSelector}
         onSectionChange={setSection}
         onCategoriesChange={setCategories}
         onMaxProductsChange={setMaxProducts}

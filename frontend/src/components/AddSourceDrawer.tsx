@@ -11,12 +11,14 @@ export default function AddSourceDrawer({
   open,
   onClose,
   brandId,
+  sources,
   editingSource,
   onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   brandId: string;
+  sources: Source[];
   editingSource?: Source | null;
   onCreated: () => void;
 }) {
@@ -94,6 +96,8 @@ export default function AddSourceDrawer({
         {activePlatform === "official_site" ? (
           <OfficialSiteAddSourceForm
             key={formKey}
+            brandId={brandId}
+            sources={sources}
             onSubmit={submit}
             initialSpec={initialSpec}
             submitLabel={isEditing ? "Save changes" : "Add source"}

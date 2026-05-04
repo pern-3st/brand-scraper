@@ -92,6 +92,7 @@ export default function BrandView({
       <AddSourceDrawer
         open={adding || editingSource !== null}
         brandId={brandId}
+        sources={detail.sources}
         editingSource={editingSource}
         onClose={() => {
           setAdding(false);
