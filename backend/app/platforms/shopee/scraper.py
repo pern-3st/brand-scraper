@@ -25,16 +25,18 @@ reasoning including the rejected alternatives.
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import AsyncIterator
 
-from patchright.async_api import async_playwright
-
 from app.platforms.base import ScrapeContext
+from app.platforms.shopee._session import (
+    CARD_WAIT_MS,
+    PROFILE_DIR,
+    launch_persistent_context,
+    navigate_with_login_wall_recovery,
+    wait_for_cards as _wait_for_cards,
+)
 from app.platforms.shopee.extract import (
     GRID_CARD_SELECTOR,
     extract_grid_items,
@@ -45,14 +47,13 @@ from app.platforms.shopee.models import ShopeeScrapeRequest
 
 log = logging.getLogger(__name__)
 
-# Resolve to backend/data/browser_profiles/shopee_sg. File layout:
-#   backend/app/platforms/shopee/__init__.py
-#   parents[0] = shopee/  parents[1] = platforms/
-#   parents[2] = app/     parents[3] = backend/
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
-PROFILE_DIR = BACKEND_ROOT / "data" / "browser_profiles" / "shopee_sg"
-
-CARD_WAIT_MS = 10_000
+# Re-exports for backwards compatibility — these moved to ``_session.py``
+# but external code (and tests) historically imported them from here.
+__all__ = [
+    "PROFILE_DIR",
+    "CARD_WAIT_MS",
+    "ShopeeScraper",
+]
 
 
 class ShopeeScraper:
@@ -69,113 +70,67 @@ class ShopeeScraper:
     ) -> AsyncIterator[ProductRecord]:
         shop_url = str(request.shop_url)
         max_products = request.max_products
-        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
         cumulative: set[int] = set()
         yielded = 0
 
-        async with async_playwright() as p:
-            context = await p.chromium.launch_persistent_context(
-                user_data_dir=str(PROFILE_DIR),
-                channel="chrome",
-                headless=False,
-                viewport={"width": 1366, "height": 900},
-            )
-            try:
-                page = await context.new_page()
+        async with launch_persistent_context() as (_p, context):
+            page = await context.new_page()
 
-                # --- Page 1: navigate, check for login wall ---
-                await page.goto(shop_url, wait_until="domcontentloaded")
-                if not await _wait_for_cards(page):
-                    log.info("shopee: no grid cards on first load — assuming login wall")
-                    ctx.queue.put_nowait({
-                        "event": "login_required",
-                        "data": json.dumps({
-                            "message": (
-                                "Log in to Shopee in the open Chrome window, "
-                                "then click Continue."
-                            ),
-                        }),
-                    })
-                    login_task = asyncio.create_task(ctx.login_event.wait())
-                    cancel_task = asyncio.create_task(ctx.cancel_event.wait())
-                    done, pending = await asyncio.wait(
-                        [login_task, cancel_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    for t in pending:
-                        t.cancel()
-                    if ctx.cancel_event.is_set():
-                        return
-                    ctx.login_event.clear()
+            # --- Page 1: navigate, recover from login wall if needed ---
+            ready = await navigate_with_login_wall_recovery(page, shop_url, ctx)
+            if not ready:
+                return  # cancelled during login wait
 
-                    await page.goto(shop_url, wait_until="domcontentloaded")
-                    if not await _wait_for_cards(page):
-                        raise RuntimeError(
-                            "shopee: still no grid cards after login. "
-                            "Check the shop URL or inspect the browser window."
-                        )
+            # --- Paginate until exhausted or limit reached ---
+            page_idx = 1
+            while True:
+                if ctx.cancel_event.is_set():
+                    return
 
-                # --- Paginate until exhausted or limit reached ---
-                page_idx = 1
-                while True:
-                    if ctx.cancel_event.is_set():
-                        return
+                items = await extract_grid_items(page)
+                new_items = [
+                    it for it in items if it.get("item_id") not in cumulative
+                ]
+                log.info(
+                    "shopee: page=%d extracted=%d new=%d cumulative=%d",
+                    page_idx, len(items), len(new_items), len(cumulative),
+                )
 
-                    items = await extract_grid_items(page)
-                    new_items = [
-                        it for it in items if it.get("item_id") not in cumulative
-                    ]
-                    log.info(
-                        "shopee: page=%d extracted=%d new=%d cumulative=%d",
-                        page_idx, len(items), len(new_items), len(cumulative),
-                    )
+                if not new_items:
+                    log.info("shopee: zero new items — catalog exhausted")
+                    return
 
-                    if not new_items:
-                        log.info("shopee: zero new items — catalog exhausted")
-                        return
-
-                    for it in new_items:
-                        if yielded >= max_products:
-                            return
-                        rec = _to_record(it)
-                        if rec is None:
-                            log.warning("shopee: dropping malformed card %s", it)
-                            continue
-                        cumulative.add(rec.item_id)
-                        yielded += 1
-                        yield rec
-
+                for it in new_items:
                     if yielded >= max_products:
                         return
+                    rec = _to_record(it)
+                    if rec is None:
+                        log.warning("shopee: dropping malformed card %s", it)
+                        continue
+                    cumulative.add(rec.item_id)
+                    yielded += 1
+                    yield rec
 
-                    page_idx += 1
-                    target = f"{shop_url}?page={page_idx}&sortBy=pop&tab=0"
-                    try:
-                        await page.goto(target, wait_until="domcontentloaded")
-                    except Exception as exc:
-                        log.info(
-                            "shopee: nav to page %d failed (%s) — stopping",
-                            page_idx, exc,
-                        )
-                        return
-                    if not await _wait_for_cards(page):
-                        log.info(
-                            "shopee: page %d has no grid cards — catalog exhausted",
-                            page_idx,
-                        )
-                        return
-            finally:
-                await context.close()
+                if yielded >= max_products:
+                    return
 
-
-async def _wait_for_cards(page) -> bool:
-    """Wait for at least one grid card. Returns True on success, False on timeout."""
-    try:
-        await page.wait_for_selector(GRID_CARD_SELECTOR, timeout=CARD_WAIT_MS)
-        return True
-    except Exception:
-        return False
+                page_idx += 1
+                target = f"{shop_url}?page={page_idx}&sortBy=pop&tab=0"
+                try:
+                    await page.goto(target, wait_until="domcontentloaded")
+                except Exception as exc:
+                    log.info(
+                        "shopee: nav to page %d failed (%s) — stopping",
+                        page_idx, exc,
+                    )
+                    return
+                if not await _wait_for_cards(page):
+                    log.info(
+                        "shopee: page %d has no grid cards — catalog exhausted",
+                        page_idx,
+                    )
+                    return
 
 
 def _to_record(item: dict) -> ProductRecord | None:

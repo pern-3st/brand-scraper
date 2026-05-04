@@ -24,12 +24,17 @@ def write_records(
     *,
     meta: dict[str, Any],
     status: str,
+    record_key: str = "records",
 ) -> None:
-    """Atomic-ish write: write to tmp then rename over target."""
+    """Atomic-ish write: write to tmp then rename over target.
+
+    ``record_key`` controls the top-level list name. Grid scrapes use the
+    default ``"records"``; enrichment passes use ``"results"``.
+    """
     payload = {
         "_status": status,  # "ok" | "error" | "cancelled" | "in_progress"
         "_meta": meta,
-        "records": [r.model_dump(mode="json") for r in records],
+        record_key: [r.model_dump(mode="json") for r in records],
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))

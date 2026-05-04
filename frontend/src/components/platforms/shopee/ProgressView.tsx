@@ -2,8 +2,9 @@
 
 import { DoneInfo, LogEntry, ProductRecord } from "@/types";
 import type { StreamStatus } from "@/hooks/useScrapeStream";
-import SnapshotTable from "@/components/SnapshotTable";
-import { shopeeColumns } from "./columns";
+import SnapshotTable, { productRecordColumns } from "@/components/SnapshotTable";
+
+const SHOPEE_COLUMNS = productRecordColumns("shopee");
 
 interface ProgressViewProps {
   products: ProductRecord[];
@@ -53,7 +54,10 @@ export default function ProgressView({
         </div>
       </div>
 
-      <SnapshotTable products={products} columns={shopeeColumns} />
+      <SnapshotTable
+        rows={products as unknown as Record<string, unknown>[]}
+        columns={SHOPEE_COLUMNS}
+      />
     </div>
   );
 }

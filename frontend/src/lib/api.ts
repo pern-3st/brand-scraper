@@ -2,11 +2,17 @@ import {
   Brand,
   BrandDetail,
   BrandSummary,
+  EnrichmentFieldsResponse,
+  EnrichmentRequest,
+  EnrichmentStartResponse,
+  EnrichmentSummary,
+  LogEntry,
   Platform,
   RunSummary,
   ScrapeStartResponse,
   Settings,
   Source,
+  UnifiedTable,
 } from "@/types";
 
 // 127.0.0.1 (not "localhost") because uvicorn binds IPv4-only by default and
@@ -101,6 +107,18 @@ export async function getRun(
   );
 }
 
+export async function getRunLogs(
+  brandId: string,
+  sourceId: string,
+  runId: string
+): Promise<LogEntry[]> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/logs`
+    )
+  );
+}
+
 export async function deleteRun(
   brandId: string,
   sourceId: string,
@@ -145,6 +163,102 @@ export async function resumeLogin(
     throw new Error(`Failed to resume login (${res.status}): ${text}`);
   }
   return res.json();
+}
+
+// --- enrichment endpoints --------------------------------------------------
+
+export async function getEnrichmentFields(
+  platform: Platform
+): Promise<EnrichmentFieldsResponse> {
+  return json(
+    await fetch(`${API_URL}/api/platforms/${platform}/enrichment_fields`)
+  );
+}
+
+export async function startEnrichment(
+  brandId: string,
+  sourceId: string,
+  runId: string,
+  request: EnrichmentRequest
+): Promise<EnrichmentStartResponse> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/enrichments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }
+    )
+  );
+}
+
+export async function listEnrichments(
+  brandId: string,
+  sourceId: string,
+  runId: string
+): Promise<EnrichmentSummary[]> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/enrichments`
+    )
+  );
+}
+
+export async function deleteEnrichment(
+  brandId: string,
+  sourceId: string,
+  runId: string,
+  enrichmentId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/enrichments/${enrichmentId}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok && res.status !== 204) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+}
+
+export async function getEnrichment(
+  brandId: string,
+  sourceId: string,
+  runId: string,
+  enrichmentId: string
+): Promise<unknown> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/enrichments/${enrichmentId}`
+    )
+  );
+}
+
+export async function getEnrichmentLogs(
+  brandId: string,
+  sourceId: string,
+  runId: string,
+  enrichmentId: string
+): Promise<LogEntry[]> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/enrichments/${enrichmentId}/logs`
+    )
+  );
+}
+
+export async function getUnifiedTable(
+  brandId: string,
+  sourceId: string,
+  runId: string,
+  include: "all" | "latest_per_field" | string[] = "latest_per_field"
+): Promise<UnifiedTable> {
+  const q = Array.isArray(include) ? include.join(",") : include;
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/sources/${sourceId}/runs/${runId}/table?include_enrichments=${encodeURIComponent(q)}`
+    )
+  );
 }
 
 export async function getSettings(): Promise<Settings> {

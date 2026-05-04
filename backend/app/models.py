@@ -1,7 +1,10 @@
-from datetime import datetime
-from typing import Annotated, Literal, Union
+from __future__ import annotations
 
-from pydantic import BaseModel, Field, HttpUrl
+import re
+from datetime import datetime
+from typing import Annotated, Any, Literal, Union
+
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 from app.platforms.shopee.models import ShopeeScrapeRequest  # forward; created in Phase 2B
 
@@ -12,6 +15,7 @@ class OfficialSiteScrapeRequest(BaseModel):
     section: str
     categories: list[str]
     max_products: int = 10
+    skip_menu_navigation: bool = False
 
 
 ScrapeRequest = Annotated[
@@ -59,3 +63,95 @@ class ScrapeStartResponse(BaseModel):
 class LogEvent(BaseModel):
     message: str
     level: str  # "info" | "success" | "warning" | "error"
+
+
+# --- enrichment --------------------------------------------------------------
+
+FieldType = Literal["str", "int", "float", "bool", "list[str]"]
+
+_IDENT_RE = re.compile(r"\W|^(?=\d)")
+
+
+def safe_ident(raw: str) -> str:
+    """Coerce arbitrary user input into a valid Python identifier usable as a
+    Pydantic field name. Matches the spec in
+    ``docs/plans/2026-04-24-product-detail-enrichment-design.md``.
+    """
+    cleaned = _IDENT_RE.sub("_", raw.strip())
+    if not cleaned or cleaned.startswith("_"):
+        cleaned = f"f_{cleaned.lstrip('_')}"
+    return cleaned
+
+
+class FieldDef(BaseModel):
+    """Curated enrichment field exposed by a platform's catalog."""
+    id: str
+    label: str
+    type: FieldType
+    description: str
+    category: str | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _ident_must_be_valid(cls, v: str) -> str:
+        if not v.isidentifier():
+            raise ValueError(f"FieldDef.id {v!r} is not a valid Python identifier")
+        return v
+
+
+class FreeformPrompt(BaseModel):
+    """User-authored question for a platform that supports freeform prompts."""
+    id: str
+    label: str
+    prompt: str
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _sanitise_id(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return safe_ident(v)
+        return v
+
+
+class EnrichmentRequest(BaseModel):
+    curated_fields: list[str]
+    freeform_prompts: list[FreeformPrompt]
+
+    @model_validator(mode="after")
+    def _check_non_empty_and_unique(self) -> "EnrichmentRequest":
+        if not self.curated_fields and not self.freeform_prompts:
+            raise ValueError("enrichment request must specify at least one field or prompt")
+        seen: set[str] = set()
+        for fid in self.curated_fields:
+            if fid in seen:
+                raise ValueError(f"duplicate field id {fid!r}")
+            seen.add(fid)
+        for prompt in self.freeform_prompts:
+            if prompt.id in seen:
+                raise ValueError(
+                    f"enrichment field id {prompt.id!r} collides with another field or prompt"
+                )
+            seen.add(prompt.id)
+        return self
+
+
+class EnrichmentRow(BaseModel):
+    """One extractor result for one product, written to the enrichment file."""
+    product_key: str
+    values: dict[str, Any]
+    errors: dict[str, str] = Field(default_factory=dict)
+    enriched_at: datetime
+
+
+class UnifiedColumn(BaseModel):
+    """Column descriptor returned by ``GET /runs/{id}/table``."""
+    id: str
+    label: str
+    type: FieldType | None = None  # None when the scrape schema field has no mappable type (e.g. datetime)
+    source: Literal["scrape", "enrichment"]
+    enrichment_id: str | None = None
+
+
+class UnifiedTable(BaseModel):
+    columns: list[UnifiedColumn]
+    rows: list[dict[str, Any]]

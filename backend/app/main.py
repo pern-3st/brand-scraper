@@ -9,8 +9,20 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from app import settings as app_settings
 from app.brands import BrandAlreadyExists
-from app.models import ScrapeRequest, ScrapeStartResponse
-from app.runner import get_repo, run_scrape
+from app.models import (
+    EnrichmentRequest,
+    FieldDef,
+    ScrapeRequest,
+    ScrapeStartResponse,
+    UnifiedTable,
+)
+from app.runner import (
+    ENRICHMENT_EXTRACTORS,
+    PRODUCT_IDENTITIES,
+    get_repo,
+    run_enrichment,
+    run_scrape,
+)
 from app.session import ScrapeSession, sessions
 
 app = FastAPI(title="Brand Scraper API")
@@ -197,6 +209,33 @@ async def get_run(brand_id: str, source_id: str, run_id: str):
     return payload
 
 
+@app.get("/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/logs")
+async def get_run_logs(brand_id: str, source_id: str, run_id: str):
+    repo = get_repo()
+    if repo.get_source(brand_id, source_id) is None:
+        raise HTTPException(404, f"source {source_id!r} not found")
+    if repo.get_run_payload(brand_id, source_id, run_id) is None:
+        raise HTTPException(404, f"run {run_id!r} not found")
+    return repo.get_run_logs(brand_id, source_id, run_id)
+
+
+@app.get(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}"
+    "/enrichments/{enrichment_id}/logs"
+)
+async def get_enrichment_logs(
+    brand_id: str, source_id: str, run_id: str, enrichment_id: str,
+):
+    repo = get_repo()
+    if repo.get_source(brand_id, source_id) is None:
+        raise HTTPException(404, f"source {source_id!r} not found")
+    if repo.get_run_payload(brand_id, source_id, run_id) is None:
+        raise HTTPException(404, f"run {run_id!r} not found")
+    if repo.get_enrichment_payload(brand_id, source_id, run_id, enrichment_id) is None:
+        raise HTTPException(404, f"enrichment {enrichment_id!r} not found")
+    return repo.get_enrichment_logs(brand_id, source_id, run_id, enrichment_id)
+
+
 @app.delete("/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}", status_code=204)
 async def delete_run(brand_id: str, source_id: str, run_id: str):
     repo = get_repo()
@@ -273,6 +312,179 @@ async def login_complete(scrape_id: str):
     return {"status": "resumed"}
 
 
+# ---- enrichment endpoints ----
+
+class EnrichmentFieldsOut(BaseModel):
+    fields: list[FieldDef]
+    supports_freeform: bool
+
+
+class EnrichmentStartResponse(BaseModel):
+    session_id: str
+
+
+class EnrichmentSummaryOut(BaseModel):
+    id: str
+    status: str
+    aggregates: dict[str, Any]
+    request: dict[str, Any]
+
+
+def _validate_enrichment_request(platform: str, request: EnrichmentRequest) -> None:
+    """Reject requests that ask for unknown curated fields or freeform
+    prompts on a platform that doesn't support them. Identifier safety
+    (valid Python identifiers, cross-collision) is already enforced by
+    ``EnrichmentRequest``/``FreeformPrompt`` validators."""
+    if platform not in ENRICHMENT_EXTRACTORS:
+        raise HTTPException(422, f"platform {platform!r} does not support enrichment")
+    extractor_cls = ENRICHMENT_EXTRACTORS[platform]
+    catalog_ids = {fd.id for fd in extractor_cls.available_fields}
+    unknown = [fid for fid in request.curated_fields if fid not in catalog_ids]
+    if unknown:
+        raise HTTPException(
+            422, f"unknown curated fields for {platform!r}: {unknown}"
+        )
+    if request.freeform_prompts and not extractor_cls.supports_freeform:
+        raise HTTPException(
+            422, f"platform {platform!r} does not support freeform prompts"
+        )
+
+
+@app.get("/api/platforms/{platform}/enrichment_fields", response_model=EnrichmentFieldsOut)
+async def get_enrichment_fields(platform: str) -> EnrichmentFieldsOut:
+    if platform not in ENRICHMENT_EXTRACTORS:
+        raise HTTPException(404, f"platform {platform!r} has no enrichment extractor")
+    extractor_cls = ENRICHMENT_EXTRACTORS[platform]
+    return EnrichmentFieldsOut(
+        fields=list(extractor_cls.available_fields),
+        supports_freeform=extractor_cls.supports_freeform,
+    )
+
+
+@app.post(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/enrichments",
+    response_model=EnrichmentStartResponse,
+)
+async def start_enrichment(
+    brand_id: str, source_id: str, run_id: str, payload: EnrichmentRequest,
+) -> EnrichmentStartResponse:
+    repo = get_repo()
+    source = repo.get_source(brand_id, source_id)
+    if source is None:
+        raise HTTPException(404, f"source {source_id!r} not found")
+    parent = repo.get_run_payload(brand_id, source_id, run_id)
+    if parent is None:
+        raise HTTPException(404, f"run {run_id!r} not found")
+    parent_status = parent.get("_status")
+    if parent_status not in {"ok", "cancelled"}:
+        raise HTTPException(
+            409,
+            f"parent run is {parent_status!r}; enrichment requires an ok or cancelled run",
+        )
+
+    # The parent's platform drives field validation — callers don't pass it.
+    platform = (parent.get("_meta") or {}).get("platform") or source.platform
+    _validate_enrichment_request(platform, payload)
+
+    # Mutex against any other session for this (brand, source).
+    for sess in sessions.values():
+        if sess.brand_id == brand_id and sess.source_id == source_id:
+            raise HTTPException(409, "a run is already in flight for this source")
+
+    session_id = uuid.uuid4().hex[:12]
+    session = ScrapeSession(
+        id=session_id,
+        brand_id=brand_id,
+        source_id=source_id,
+        parent_run_id=run_id,
+        request=payload,
+    )
+    sessions[session_id] = session
+    session.task = asyncio.create_task(run_enrichment(session))
+    return EnrichmentStartResponse(session_id=session_id)
+
+
+@app.get(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/enrichments",
+    response_model=list[EnrichmentSummaryOut],
+)
+async def list_enrichments(
+    brand_id: str, source_id: str, run_id: str,
+) -> list[EnrichmentSummaryOut]:
+    repo = get_repo()
+    if repo.get_run_payload(brand_id, source_id, run_id) is None:
+        raise HTTPException(404, f"run {run_id!r} not found")
+    return [EnrichmentSummaryOut(**e) for e in repo.list_enrichments(brand_id, source_id, run_id)]
+
+
+@app.get(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/enrichments/{enrichment_id}"
+)
+async def get_enrichment(brand_id: str, source_id: str, run_id: str, enrichment_id: str):
+    repo = get_repo()
+    payload = repo.get_enrichment_payload(brand_id, source_id, run_id, enrichment_id)
+    if payload is None:
+        raise HTTPException(404, f"enrichment {enrichment_id!r} not found")
+    return payload
+
+
+@app.delete(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/enrichments/{enrichment_id}",
+    status_code=204,
+)
+async def delete_enrichment(brand_id: str, source_id: str, run_id: str, enrichment_id: str):
+    repo = get_repo()
+    # Block while a session for this source is in flight — it might be the
+    # pass we're about to delete.
+    for sess in sessions.values():
+        if sess.brand_id == brand_id and sess.source_id == source_id:
+            raise HTTPException(
+                409, "cannot delete enrichment while a run is in flight for this source",
+            )
+    if not repo.delete_enrichment(brand_id, source_id, run_id, enrichment_id):
+        raise HTTPException(404, f"enrichment {enrichment_id!r} not found")
+    return None
+
+
+@app.get(
+    "/api/brands/{brand_id}/sources/{source_id}/runs/{run_id}/table",
+    response_model=UnifiedTable,
+)
+async def get_unified_table(
+    brand_id: str,
+    source_id: str,
+    run_id: str,
+    include_enrichments: str = "latest_per_field",
+) -> UnifiedTable:
+    repo = get_repo()
+    parent = repo.get_run_payload(brand_id, source_id, run_id)
+    if parent is None:
+        raise HTTPException(404, f"run {run_id!r} not found")
+    platform = (parent.get("_meta") or {}).get("platform")
+    identity = PRODUCT_IDENTITIES.get(platform)
+    if identity is None:
+        raise HTTPException(
+            422, f"platform {platform!r} has no registered product identity",
+        )
+
+    include: "str | list[str]"
+    if include_enrichments in {"all", "latest_per_field"}:
+        include = include_enrichments
+    else:
+        # Comma-separated id list selects specific passes.
+        include = [p.strip() for p in include_enrichments.split(",") if p.strip()]
+        if not include:
+            raise HTTPException(422, "include_enrichments must be non-empty")
+    try:
+        return repo.get_unified_table(
+            brand_id, source_id, run_id, identity=identity, include=include,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
 # ---- settings endpoints ----
 
 class SettingsOut(BaseModel):
@@ -299,5 +511,8 @@ async def update_settings(payload: UpdateSettingsIn) -> SettingsOut:
     model = payload.openrouter_model
     if model is not None:
         model = model.strip()
-    app_settings.save(openrouter_api_key=key, openrouter_model=model)
+    app_settings.save(
+        openrouter_api_key=key,
+        openrouter_model=model,
+    )
     return SettingsOut(**app_settings.masked_view())

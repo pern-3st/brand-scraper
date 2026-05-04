@@ -5,6 +5,7 @@ import Dashboard from "@/components/Dashboard";
 import BrandView from "@/components/BrandView";
 import ScrapingView from "@/components/ScrapingView";
 import RunView from "@/components/RunView";
+import EnrichmentProgress from "@/components/EnrichmentProgress";
 import SettingsModal from "@/components/SettingsModal";
 import Breadcrumb, { type Crumb } from "@/components/shell/Breadcrumb";
 import { startScrape } from "@/lib/api";
@@ -13,7 +14,14 @@ type View =
   | { screen: "dashboard" }
   | { screen: "brand"; brandId: string }
   | { screen: "scraping"; brandId: string; sourceId: string; scrapeId: string }
-  | { screen: "run"; brandId: string; sourceId: string; runId: string };
+  | { screen: "run"; brandId: string; sourceId: string; runId: string }
+  | {
+      screen: "enriching";
+      brandId: string;
+      sourceId: string;
+      runId: string;
+      sessionId: string;
+    };
 
 export default function Home() {
   const [view, setView] = useState<View>({ screen: "dashboard" });
@@ -37,6 +45,26 @@ export default function Home() {
             setView({ screen: "brand", brandId: view.brandId }),
         },
         { label: "Scraping…" },
+      ];
+    }
+    if (view.screen === "enriching") {
+      return [
+        root,
+        {
+          label: view.brandId,
+          onClick: () => setView({ screen: "brand", brandId: view.brandId }),
+        },
+        {
+          label: formatRun(view.runId),
+          onClick: () =>
+            setView({
+              screen: "run",
+              brandId: view.brandId,
+              sourceId: view.sourceId,
+              runId: view.runId,
+            }),
+        },
+        { label: "Enriching…" },
       ];
     }
     return [
@@ -119,6 +147,28 @@ export default function Home() {
             brandId={view.brandId}
             sourceId={view.sourceId}
             runId={view.runId}
+            onStartEnrichment={({ session_id }) =>
+              setView({
+                screen: "enriching",
+                brandId: view.brandId,
+                sourceId: view.sourceId,
+                runId: view.runId,
+                sessionId: session_id,
+              })
+            }
+          />
+        )}
+        {view.screen === "enriching" && (
+          <EnrichmentProgress
+            sessionId={view.sessionId}
+            onTerminated={() =>
+              setView({
+                screen: "run",
+                brandId: view.brandId,
+                sourceId: view.sourceId,
+                runId: view.runId,
+              })
+            }
           />
         )}
       </div>

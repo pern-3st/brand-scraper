@@ -6,9 +6,11 @@ interface SectionCategorySelectorProps {
   section: string;
   selectedCategories: string[];
   maxProducts: number;
+  skipMenuNavigation: boolean;
   onSectionChange: (section: string) => void;
   onCategoriesChange: (categories: string[]) => void;
   onMaxProductsChange: (max: number) => void;
+  onSkipMenuNavigationChange: (value: boolean) => void;
 }
 
 const SECTIONS = ["mens", "womens", "kids"];
@@ -21,9 +23,11 @@ export default function SectionCategorySelector({
   section,
   selectedCategories,
   maxProducts,
+  skipMenuNavigation,
   onSectionChange,
   onCategoriesChange,
   onMaxProductsChange,
+  onSkipMenuNavigationChange,
 }: SectionCategorySelectorProps) {
   const categories = CATEGORIES[section] ?? [];
 
@@ -147,6 +151,27 @@ export default function SectionCategorySelector({
           <span>{MAX_MIN}</span>
           <span>{MAX_MAX}</span>
         </div>
+      </div>
+
+      {/* Skip menu navigation toggle */}
+      <div>
+        <label className="flex items-start gap-3 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={skipMenuNavigation}
+            onChange={(e) => onSkipMenuNavigationChange(e.target.checked)}
+            className="mt-0.5 accent-accent"
+          />
+          <span>
+            <span className="block font-medium text-foreground/70">
+              Skip menu navigation
+            </span>
+            <span className="block text-xs text-muted-fg mt-0.5">
+              Start directly from the URL instead of hunting the top nav.
+              Use when the URL is already inside the target section.
+            </span>
+          </span>
+        </label>
       </div>
     </div>
   );

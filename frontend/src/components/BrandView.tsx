@@ -219,9 +219,7 @@ function HistoryList({
               <span className="text-muted-fg flex-1 truncate">
                 {formatPlatform(source.platform)}
               </span>
-              <span className="text-muted-fg shrink-0">
-                {formatStatus(run)}
-              </span>
+              <StatusPill run={run} />
             </button>
             <button
               onClick={() => onDeleteRun(source.id, run.id)}
@@ -237,11 +235,32 @@ function HistoryList({
   );
 }
 
-function formatStatus(run: RunSummary): string {
-  if (run.status === "ok") {
-    return `OK · ${run.aggregates.product_count} products`;
-  }
-  return run.status;
+function StatusPill({ run }: { run: RunSummary }) {
+  const tone =
+    run.status === "ok"
+      ? "bg-emerald-100 text-emerald-800"
+      : run.status === "error"
+        ? "bg-pink-100 text-pink-800"
+        : run.status === "cancelled"
+          ? "bg-amber-100 text-amber-800"
+          : run.status === "in_progress"
+            ? "bg-sky-100 text-sky-800"
+            : "bg-muted text-muted-fg"; // unknown / legacy
+
+  const label =
+    run.status === "ok"
+      ? `OK · ${run.aggregates.product_count ?? 0} products`
+      : run.status === "in_progress"
+        ? "In progress"
+        : run.status.charAt(0).toUpperCase() + run.status.slice(1);
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 function describeSpec(s: Source): string {

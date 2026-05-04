@@ -29,6 +29,11 @@ export default function AddSourceForm({
   const [maxProducts, setMaxProducts] = useState(
     typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 10,
   );
+  const [skipMenuNavigation, setSkipMenuNavigation] = useState(
+    typeof initialSpec?.skip_menu_navigation === "boolean"
+      ? initialSpec.skip_menu_navigation
+      : false,
+  );
 
   const canSubmit = brandUrl.trim() !== "" && categories.length > 0;
 
@@ -42,9 +47,11 @@ export default function AddSourceForm({
         section={section}
         selectedCategories={categories}
         maxProducts={maxProducts}
+        skipMenuNavigation={skipMenuNavigation}
         onSectionChange={setSection}
         onCategoriesChange={setCategories}
         onMaxProductsChange={setMaxProducts}
+        onSkipMenuNavigationChange={setSkipMenuNavigation}
       />
       <button
         disabled={!canSubmit}
@@ -54,6 +61,7 @@ export default function AddSourceForm({
             section,
             categories,
             max_products: maxProducts,
+            skip_menu_navigation: skipMenuNavigation,
           })
         }
         className="w-full rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover disabled:opacity-40"

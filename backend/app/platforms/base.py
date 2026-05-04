@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import AsyncIterator, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, AsyncIterator, Protocol, runtime_checkable
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from app.models import EnrichmentRequest, EnrichmentRow, FieldDef
 
 
 @dataclass
@@ -34,3 +37,30 @@ class PlatformScraper(Protocol):
         request: BaseModel,
         ctx: ScrapeContext,
     ) -> AsyncIterator[BaseModel]: ...
+
+
+@runtime_checkable
+class ProductIdentity(Protocol):
+    """Derives a stable join key from a platform's records.
+
+    Returning ``None`` means the record lacks a stable key; the enrichment
+    runner skips the record and counts it in ``products_skipped_no_key``.
+    """
+
+    def product_key(self, record: BaseModel) -> str | None: ...
+
+
+@runtime_checkable
+class EnrichmentExtractor(Protocol):
+    """Platform-side detail-pass extractor. Implementations land in Phase 2/3."""
+
+    platform_key: str
+    available_fields: list["FieldDef"]
+    supports_freeform: bool
+
+    def stream_enrichments(
+        self,
+        records: list[BaseModel],
+        requested: "EnrichmentRequest",
+        ctx: ScrapeContext,
+    ) -> AsyncIterator["EnrichmentRow"]: ...

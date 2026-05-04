@@ -2,8 +2,9 @@
 
 import { ProductRecord } from "@/types";
 import type { StreamStatus } from "@/hooks/useScrapeStream";
-import SnapshotTable from "@/components/SnapshotTable";
-import { officialSiteColumns } from "./columns";
+import SnapshotTable, { productRecordColumns } from "@/components/SnapshotTable";
+
+const OFFICIAL_SITE_COLUMNS = productRecordColumns("official_site");
 
 interface Props {
   brand: string;
@@ -104,8 +105,8 @@ export default function ProgressView({
       </div>
 
       <SnapshotTable
-        products={products}
-        columns={officialSiteColumns}
+        rows={products as unknown as Record<string, unknown>[]}
+        columns={OFFICIAL_SITE_COLUMNS}
         emptyMessage="Waiting for products…"
       />
     </div>

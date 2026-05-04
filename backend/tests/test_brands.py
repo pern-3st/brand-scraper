@@ -1,3 +1,5 @@
+import json
+
 from app.brands import slugify_brand_name
 
 
@@ -145,7 +147,7 @@ def test_aggregates_empty():
     }
 
 
-def test_list_runs_newest_first_skips_partial(repo, tmp_path):
+def test_list_runs_includes_partial(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
     s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
@@ -160,15 +162,74 @@ def test_list_runs_newest_first_skips_partial(repo, tmp_path):
         "_meta": {"aggregates": {"product_count": 2, "price_min": 5, "price_max": 10, "category_count": None}},
         "records": [],
     }))
+    # Realistic error partial: `meta["aggregates"]` is missing because
+    # the runner sets it AFTER the async-for loop completes — an exception
+    # raised mid-loop reaches `except Exception` before that line runs.
+    # (See runner.py:90-141.)
     (runs_dir / "20260413T030000Z.partial.json").write_text(_json.dumps({
-        "_status": "in_progress", "_meta": {}, "records": []
+        "_status": "error",
+        "_meta": {"error": "boom"},
+        "records": [],
     }))
 
     runs = repo.list_runs("nike", s.id)
-    assert [r.id for r in runs] == ["20260413T020000Z", "20260401T000000Z"]
-    assert runs[0].status == "cancelled"
-    assert runs[0].aggregates["product_count"] == 2
-    assert runs[0].aggregates["price_max"] == 10
+    assert [r.id for r in runs] == ["20260413T030000Z", "20260413T020000Z", "20260401T000000Z"]
+    assert runs[0].status == "error"
+    # All aggregate keys default to None when `_meta.aggregates` is absent.
+    assert runs[0].aggregates == {k: None for k in ("product_count", "price_min", "price_max", "category_count")}
+    assert runs[1].status == "cancelled"
+    assert runs[2].status == "ok"
+
+
+def test_list_runs_partial_without_final_version_wins(repo, tmp_path):
+    """If both `<id>.json` and `<id>.partial.json` exist (shouldn't happen,
+    but be defensive), prefer the final one."""
+    import json as _json
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
+    (runs_dir / "20260501T000000Z.json").write_text(_json.dumps({
+        "_status": "ok", "_meta": {"aggregates": {}}, "records": [],
+    }))
+    (runs_dir / "20260501T000000Z.partial.json").write_text(_json.dumps({
+        "_status": "in_progress", "_meta": {"aggregates": {}}, "records": [],
+    }))
+    runs = repo.list_runs("nike", s.id)
+    assert len(runs) == 1
+    assert runs[0].status == "ok"
+
+
+def test_get_run_payload_falls_back_to_partial(repo, tmp_path):
+    import json as _json
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
+    payload = {"_status": "error", "_meta": {"error": "boom"}, "records": []}
+    (runs_dir / "20260422T100000Z.partial.json").write_text(_json.dumps(payload))
+    assert repo.get_run_payload("nike", s.id, "20260422T100000Z") == payload
+
+
+def test_delete_run_removes_log_file(repo, tmp_path):
+    import json as _json
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
+    (runs_dir / "20260422T110000Z.json").write_text(_json.dumps({"_status": "ok", "_meta": {}, "records": []}))
+    (runs_dir / "20260422T110000Z.log.jsonl").write_text('{"message":"x","level":"info"}\n')
+
+    assert repo.delete_run("nike", s.id, "20260422T110000Z") is True
+    assert not (runs_dir / "20260422T110000Z.json").exists()
+    assert not (runs_dir / "20260422T110000Z.log.jsonl").exists()
+
+
+def test_delete_run_removes_partial(repo, tmp_path):
+    import json as _json
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
+    (runs_dir / "20260422T120000Z.partial.json").write_text(_json.dumps({"_status": "error", "_meta": {}, "records": []}))
+    assert repo.delete_run("nike", s.id, "20260422T120000Z") is True
+    assert not (runs_dir / "20260422T120000Z.partial.json").exists()
 
 
 def test_get_run_payload(repo, tmp_path):
@@ -180,3 +241,74 @@ def test_get_run_payload(repo, tmp_path):
     (runs_dir / "20260401T000000Z.json").write_text(_json.dumps(payload))
     assert repo.get_run_payload("nike", s.id, "20260401T000000Z") == payload
     assert repo.get_run_payload("nike", s.id, "nope") is None
+
+
+def test_log_path_creates_runs_dir(repo):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    p = repo.log_path("nike", s.id, "20260422T000000Z")
+    assert p.name == "20260422T000000Z.log.jsonl"
+    assert p.parent.name == "runs"
+    assert p.parent.exists()
+
+
+def test_get_run_logs_reads_jsonl(repo, tmp_path):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    log_file = tmp_path / "nike" / "sources" / s.id / "runs" / "20260422T000000Z.log.jsonl"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.write_text(
+        '{"message": "a", "level": "info"}\n'
+        '{"message": "b", "level": "warning"}\n'
+    )
+    logs = repo.get_run_logs("nike", s.id, "20260422T000000Z")
+    assert logs == [
+        {"message": "a", "level": "info"},
+        {"message": "b", "level": "warning"},
+    ]
+
+
+def test_get_run_logs_missing_returns_empty(repo):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    assert repo.get_run_logs("nike", s.id, "does-not-exist") == []
+
+
+def test_enriched_field_map_aggregates_across_passes(repo):
+    brand = repo.create_brand(name="Acme")
+    source = repo.add_source(
+        brand_id=brand.id, platform="official_site", spec={"brand_url": "https://acme.test"}
+    )
+    run_id = "20260504T000000Z"
+    edir = repo._enrichments_dir(brand.id, source.id, run_id)
+    edir.mkdir(parents=True, exist_ok=True)
+    (edir / "pass_a.json").write_text(json.dumps({
+        "_status": "ok",
+        "_meta": {"platform": "official_site"},
+        "results": [
+            {"product_key": "p1", "values": {"description": "x"}, "errors": {}},
+            {"product_key": "p2", "values": {}, "errors": {"_all": "boom"}},
+        ],
+    }))
+    (edir / "pass_b.partial.json").write_text(json.dumps({
+        "_status": "in_progress",
+        "_meta": {"platform": "official_site"},
+        "results": [
+            {"product_key": "p1", "values": {"rating": 4.5}, "errors": {}},
+            {"product_key": "p3", "values": {"description": None}, "errors": {}},
+        ],
+    }))
+
+    out = repo.enriched_field_map(brand.id, source.id, run_id)
+
+    assert out == {
+        "p1": {"description", "rating"},
+    }
+
+
+def test_enriched_field_map_returns_empty_when_no_runs(repo):
+    brand = repo.create_brand(name="Acme")
+    source = repo.add_source(
+        brand_id=brand.id, platform="official_site", spec={"brand_url": "https://acme.test"}
+    )
+    assert repo.enriched_field_map(brand.id, source.id, "nonexistent_run") == {}

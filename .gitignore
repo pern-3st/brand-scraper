@@ -15,12 +15,16 @@ backend/data/settings.json
 
 # Local scrape data
 backend/data/brands/
+backend/data/.browser_profiles/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Claude Code worktrees / agent scratch
+.claude/worktrees/
 
 # Misc
 *.log

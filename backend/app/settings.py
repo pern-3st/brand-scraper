@@ -13,7 +13,7 @@ from typing import Any
 
 SETTINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "settings.json"
 
-DEFAULT_MODEL = "x-ai/grok-4.1-fast"
+DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
 
 
 def _read_file() -> dict[str, Any]:
@@ -30,10 +30,17 @@ def load() -> dict[str, str]:
     data = _read_file()
     api_key = (data.get("openrouter_api_key") or "").strip() or os.getenv("OPENROUTER_API_KEY", "")
     model = (data.get("openrouter_model") or "").strip() or os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL)
-    return {"openrouter_api_key": api_key, "openrouter_model": model}
+    return {
+        "openrouter_api_key": api_key,
+        "openrouter_model": model,
+    }
 
 
-def save(*, openrouter_api_key: str | None, openrouter_model: str | None) -> None:
+def save(
+    *,
+    openrouter_api_key: str | None,
+    openrouter_model: str | None,
+) -> None:
     current = _read_file()
     if openrouter_api_key is not None:
         current["openrouter_api_key"] = openrouter_api_key

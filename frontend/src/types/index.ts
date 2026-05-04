@@ -88,3 +88,78 @@ export interface Settings {
   openrouter_api_key_hint: string;
   openrouter_model: string;
 }
+
+// --- enrichment ------------------------------------------------------------
+// Mirrors backend/app/models.py::FieldDef/FreeformPrompt/EnrichmentRequest/
+// EnrichmentRow/UnifiedColumn/UnifiedTable.
+
+export type FieldType = "str" | "int" | "float" | "bool" | "list[str]";
+
+export interface FieldDef {
+  id: string;
+  label: string;
+  type: FieldType;
+  description: string;
+  category: string | null;
+}
+
+export interface FreeformPrompt {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
+export interface EnrichmentRequest {
+  curated_fields: string[];
+  freeform_prompts: FreeformPrompt[];
+}
+
+export interface EnrichmentFieldsResponse {
+  fields: FieldDef[];
+  supports_freeform: boolean;
+}
+
+export interface EnrichmentStartResponse {
+  session_id: string;
+}
+
+export interface EnrichmentSummary {
+  id: string;
+  status: "ok" | "cancelled" | "error" | "in_progress" | string;
+  aggregates: Record<string, number | null>;
+  request: {
+    curated_fields?: string[];
+    freeform_prompts?: FreeformPrompt[];
+  };
+}
+
+export interface UnifiedColumn {
+  id: string;
+  label: string;
+  type: FieldType | null;
+  source: "scrape" | "enrichment";
+  enrichment_id: string | null;
+}
+
+export type UnifiedRow = Record<string, unknown> & { product_key: string };
+
+export interface UnifiedTable {
+  columns: UnifiedColumn[];
+  rows: UnifiedRow[];
+}
+
+export interface EnrichmentRowEvent {
+  product_key: string;
+  values: Record<string, unknown>;
+  errors: Record<string, string>;
+  index: number;
+  total: number;
+}
+
+export interface EnrichmentStartedEvent {
+  enrichment_id: string;
+  total_products: number;
+  products_skipped_no_key: number;
+  products_skipped_already_enriched?: number;
+  requested_fields: string[];
+}
