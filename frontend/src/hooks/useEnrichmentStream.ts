@@ -23,53 +23,76 @@ export interface EnrichmentStreamState {
   error: string | null;
 }
 
+interface InternalState extends EnrichmentStreamState {
+  forSessionId: string | null;
+}
+
+const INITIAL_INTERNAL: InternalState = {
+  forSessionId: null,
+  started: null,
+  rows: [],
+  logs: [],
+  status: "connecting",
+  error: null,
+};
+
+const DEFAULTS: EnrichmentStreamState = {
+  started: null,
+  rows: [],
+  logs: [],
+  status: "connecting",
+  error: null,
+};
+
 export function useEnrichmentStream(
   sessionId: string | null
 ): EnrichmentStreamState {
-  const [started, setStarted] = useState<EnrichmentStartedEvent | null>(null);
-  const [rows, setRows] = useState<EnrichmentRowEvent[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<EnrichmentStatus>("connecting");
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<InternalState>(INITIAL_INTERNAL);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
 
-    setStarted(null);
-    setRows([]);
-    setLogs([]);
-    setStatus("connecting");
-    setError(null);
+    const fresh = (
+      patch: (s: InternalState) => Partial<InternalState>
+    ): InternalState => {
+      const base: InternalState = { ...INITIAL_INTERNAL, forSessionId: sessionId };
+      return { ...base, ...patch(base) };
+    };
+
+    const update = (patch: (s: InternalState) => Partial<InternalState>) => {
+      setState((s) =>
+        s.forSessionId === sessionId
+          ? { ...s, ...patch(s) }
+          : fresh(patch),
+      );
+    };
 
     const es = new EventSource(`${API_URL}/api/scrape/${sessionId}/stream`);
     esRef.current = es;
 
     es.addEventListener("log", (e) => {
-      setStatus("streaming");
       const data: LogEntry = JSON.parse(e.data);
-      setLogs((prev) => [...prev, data]);
+      update((s) => ({ status: "streaming", logs: [...s.logs, data] }));
     });
 
     es.addEventListener("enrichment_started", (e) => {
-      setStatus("streaming");
       const data: EnrichmentStartedEvent = JSON.parse(e.data);
-      setStarted(data);
+      update(() => ({ status: "streaming", started: data }));
     });
 
     es.addEventListener("enrichment_row", (e) => {
-      setStatus("streaming");
       const data: EnrichmentRowEvent = JSON.parse(e.data);
-      setRows((prev) => [...prev, data]);
+      update((s) => ({ status: "streaming", rows: [...s.rows, data] }));
     });
 
     es.addEventListener("done", () => {
-      setStatus("done");
+      update(() => ({ status: "done" }));
       es.close();
     });
 
     es.addEventListener("cancelled", () => {
-      setStatus("cancelled");
+      update(() => ({ status: "cancelled" }));
       es.close();
     });
 
@@ -79,8 +102,10 @@ export function useEnrichmentStream(
       if (typeof raw === "string" && raw) {
         try {
           const data = JSON.parse(raw) as { message?: string };
-          setError(data.message ?? "Enrichment failed");
-          setStatus("error");
+          update(() => ({
+            status: "error",
+            error: data.message ?? "Enrichment failed",
+          }));
           es.close();
           return;
         } catch {
@@ -88,8 +113,7 @@ export function useEnrichmentStream(
         }
       }
       if (es.readyState === EventSource.CLOSED) {
-        setError("Connection lost");
-        setStatus("error");
+        update(() => ({ status: "error", error: "Connection lost" }));
       }
     });
 
@@ -99,5 +123,10 @@ export function useEnrichmentStream(
     };
   }, [sessionId]);
 
-  return { started, rows, logs, status, error };
+  if (state.forSessionId !== sessionId) {
+    return DEFAULTS;
+  }
+  const { forSessionId: _ignored, ...exposed } = state;
+  void _ignored;
+  return exposed;
 }

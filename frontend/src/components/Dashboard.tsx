@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { listBrands, createBrand, deleteBrand } from "@/lib/api";
 import type { BrandSummary } from "@/types";
 import NewBrandModal from "./NewBrandModal";
-import { formatPlatform } from "@/lib/format";
+import ConfirmDialog from "./shell/ConfirmDialog";
+import { RowMenu, type RowMenuHandle } from "./shell/RowMenu";
 
 export default function Dashboard({
   onOpenBrand,
@@ -14,11 +15,6 @@ export default function Dashboard({
   const [brands, setBrands] = useState<BrandSummary[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [menu, setMenu] = useState<{
-    brandId: string;
-    x: number;
-    y: number;
-  } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<BrandSummary | null>(null);
 
   useEffect(() => {
@@ -80,22 +76,18 @@ export default function Dashboard({
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {brands.map((b) => (
           <BrandTile
             key={b.id}
             brand={b}
             onClick={() => onOpenBrand(b.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMenu({ brandId: b.id, x: e.clientX, y: e.clientY });
-            }}
             onDelete={() => setPendingDelete(b)}
           />
         ))}
         <button
           onClick={() => setModalOpen(true)}
-          className="cursor-pointer min-h-56 rounded-3xl ring-1 ring-dashed ring-border p-10 text-lg text-foreground/40 hover:text-foreground/70 hover:ring-foreground/30 transition-colors"
+          className="cursor-pointer rounded-2xl ring-1 ring-dashed ring-border p-6 text-sm text-foreground/40 hover:text-foreground/70 hover:ring-foreground/30 transition-colors flex items-center justify-center min-h-[180px]"
         >
           + New brand
         </button>
@@ -105,18 +97,6 @@ export default function Dashboard({
         onClose={() => setModalOpen(false)}
         onCreate={handleCreate}
       />
-      {menu && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          onClose={() => setMenu(null)}
-          onDelete={() => {
-            const brand = brands.find((b) => b.id === menu.brandId);
-            setMenu(null);
-            if (brand) setPendingDelete(brand);
-          }}
-        />
-      )}
       {pendingDelete && (
         <ConfirmDialog
           title="Delete brand?"
@@ -139,146 +119,108 @@ export default function Dashboard({
 function BrandTile({
   brand,
   onClick,
-  onContextMenu,
   onDelete,
 }: {
   brand: BrandSummary;
   onClick: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
   onDelete: () => void;
 }) {
   const r = brand.latest_run;
-  const noData = !r || brand.source_count === 0;
+  const noSources = brand.source_count === 0;
+  const menuRef = useRef<RowMenuHandle>(null);
   return (
-    <button
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      className="group relative cursor-pointer rounded-3xl bg-card ring-1 ring-border p-10 text-left hover:ring-accent/40 transition-colors space-y-6 min-h-56"
-    >
-      <span
-        role="button"
-        tabIndex={0}
-        onClick={(ev) => {
-          ev.stopPropagation();
-          onDelete();
-        }}
-        onKeyDown={(ev) => {
-          if (ev.key === "Enter" || ev.key === " ") {
-            ev.stopPropagation();
-            ev.preventDefault();
-            onDelete();
-          }
-        }}
-        className="absolute top-4 right-5 text-2xl leading-none text-foreground/30 hover:text-danger-fg opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 cursor-pointer"
-        aria-label="Delete brand"
-        title="Delete brand"
-      >
-        ×
-      </span>
-      <div className="text-2xl font-semibold text-foreground">{brand.name}</div>
-      {noData ? (
-        <p className="text-base text-muted-fg">
-          No data yet — open to configure →
-        </p>
-      ) : (
-        <>
-          <div className="text-sm text-muted-fg">
-            {formatPlatform(brand.latest_source_platform)}
-            {brand.source_count > 1 && (
-              <span className="ml-1 text-foreground/40">
-                +{brand.source_count - 1} more
-              </span>
-            )}
-          </div>
-          <div className="text-base text-muted-fg">
-            {r!.aggregates.product_count} products · updated{" "}
-            {relativeTime(r!.created_at)}
-          </div>
-        </>
-      )}
-    </button>
-  );
-}
-
-function ContextMenu({
-  x,
-  y,
-  onClose,
-  onDelete,
-}: {
-  x: number;
-  y: number;
-  onClose: () => void;
-  onDelete: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("mousedown", handle);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handle);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      style={{ left: x, top: y }}
-      className="fixed z-50 min-w-36 rounded-xl bg-card ring-1 ring-border shadow-lg py-1"
-    >
+    <div className="group relative">
       <button
-        onClick={onDelete}
-        className="cursor-pointer w-full text-left px-3 py-2 text-sm text-danger-fg hover:bg-danger/10"
+        onClick={onClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          menuRef.current?.openAt(e.clientX, e.clientY);
+        }}
+        className="w-full h-full min-h-[180px] cursor-pointer rounded-2xl bg-card ring-1 ring-border p-6 text-left hover:ring-accent/40 transition-colors flex flex-col gap-4"
       >
-        Delete
-      </button>
-    </div>
-  );
-}
-
-function ConfirmDialog({
-  title,
-  body,
-  confirmLabel,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  body: React.ReactNode;
-  confirmLabel: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-      <div className="rounded-2xl bg-card ring-1 ring-border p-6 max-w-sm space-y-4">
-        <h2 className="font-semibold text-foreground">{title}</h2>
-        <p className="text-sm text-foreground/70">{body}</p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="cursor-pointer rounded-xl px-4 py-2 text-sm text-foreground/70 hover:bg-foreground/5"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="cursor-pointer rounded-xl bg-danger px-4 py-2 text-sm text-white hover:bg-danger-hover"
-          >
-            {confirmLabel}
-          </button>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1 min-w-0 flex-1">
+            <h2 className="text-lg font-semibold text-foreground truncate">
+              {brand.name}
+            </h2>
+            <div className="text-xs text-muted-fg uppercase tracking-wider truncate">
+              {brand.source_count}{" "}
+              {brand.source_count === 1 ? "source" : "sources"}
+            </div>
+          </div>
+          <span aria-hidden className="shrink-0 w-6" />
         </div>
+
+        <div className="mt-auto">
+          {noSources ? (
+            <div className="text-sm text-muted-fg">
+              No data yet — open to configure →
+            </div>
+          ) : !r ? (
+            <div className="flex items-center gap-2 text-foreground">
+              <StatusDot status={null} />
+              <span>Never run</span>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-foreground">
+                <StatusDot status={r.status} />
+                <span>
+                  Updated {relativeTime(r.created_at)} · {statusLabel(r.status)}
+                </span>
+              </div>
+              {r.status === "ok" && r.aggregates.product_count != null && (
+                <div className="text-sm text-muted-fg">
+                  {r.aggregates.product_count} products
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+      <div className="absolute top-3 right-3">
+        <RowMenu
+          ref={menuRef}
+          ariaLabel="Brand actions"
+          items={[
+            { label: "Delete", destructive: true, onSelect: onDelete },
+          ]}
+        />
       </div>
     </div>
   );
+}
+
+function StatusDot({ status }: { status: string | null }) {
+  const cls =
+    status === "ok"
+      ? "bg-emerald-500"
+      : status === "in_progress"
+        ? "bg-amber-500 animate-pulse"
+        : status === "error"
+          ? "bg-red-500"
+          : "bg-foreground/20";
+  return (
+    <span
+      aria-hidden
+      className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${cls}`}
+    />
+  );
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "ok":
+      return "OK";
+    case "error":
+      return "Error";
+    case "cancelled":
+      return "Cancelled";
+    case "in_progress":
+      return "Running…";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
 }
 
 function relativeTime(iso: string): string {

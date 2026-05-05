@@ -89,6 +89,20 @@ export async function updateSource(
   );
 }
 
+export async function deleteSource(
+  brandId: string,
+  sourceId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/api/brands/${brandId}/sources/${sourceId}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok && res.status !== 204) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+}
+
 export async function listRuns(
   brandId: string,
   sourceId: string

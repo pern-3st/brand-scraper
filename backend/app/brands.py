@@ -209,6 +209,14 @@ class BrandRepo:
         path.write_text(json.dumps(asdict(updated), indent=2))
         return updated
 
+    def delete_source(self, brand_id: str, source_id: str) -> bool:
+        import shutil
+        sdir = self._source_dir(brand_id, source_id)
+        if not sdir.exists():
+            return False
+        shutil.rmtree(sdir)
+        return True
+
     # --- runs ---
 
     _AGGREGATE_KEYS = ("product_count", "price_min", "price_max", "category_count")

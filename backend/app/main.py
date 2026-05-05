@@ -201,6 +201,17 @@ async def update_source(brand_id: str, source_id: str, payload: UpdateSourceIn):
     return SourceOut(**updated.__dict__)
 
 
+@app.delete("/api/brands/{brand_id}/sources/{source_id}", status_code=204)
+async def delete_source(brand_id: str, source_id: str):
+    repo = get_repo()
+    for sess in sessions.values():
+        if getattr(sess, "brand_id", None) == brand_id and getattr(sess, "source_id", None) == source_id:
+            raise HTTPException(409, "cannot delete source while a run is in flight")
+    if not repo.delete_source(brand_id, source_id):
+        raise HTTPException(404, f"source {source_id!r} not found")
+    return None
+
+
 @app.get("/api/brands/{brand_id}/sources/{source_id}/runs", response_model=list[RunSummaryOut])
 async def list_runs(brand_id: str, source_id: str):
     repo = get_repo()

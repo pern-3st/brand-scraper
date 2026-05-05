@@ -22,84 +22,116 @@ export interface ScrapeStreamState {
   pausedReason: PausedReason;
 }
 
+interface InternalState extends ScrapeStreamState {
+  forScrapeId: string | null;
+}
+
+const INITIAL_INTERNAL: InternalState = {
+  forScrapeId: null,
+  logs: [],
+  products: [],
+  doneInfo: null,
+  status: "connecting",
+  error: null,
+  pausedReason: null,
+};
+
+const DEFAULTS: ScrapeStreamState = {
+  logs: [],
+  products: [],
+  doneInfo: null,
+  status: "connecting",
+  error: null,
+  pausedReason: null,
+};
+
 export function useScrapeStream(scrapeId: string | null): ScrapeStreamState {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [products, setProducts] = useState<ProductRecord[]>([]);
-  const [doneInfo, setDoneInfo] = useState<DoneInfo | null>(null);
-  const [status, setStatus] = useState<StreamStatus>("connecting");
-  const [error, setError] = useState<string | null>(null);
-  const [pausedReason, setPausedReason] = useState<PausedReason>(null);
+  const [state, setState] = useState<InternalState>(INITIAL_INTERNAL);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!scrapeId) return;
 
-    setLogs([]);
-    setProducts([]);
-    setDoneInfo(null);
-    setStatus("connecting");
-    setError(null);
-    setPausedReason(null);
+    const fresh = (
+      patch: (s: InternalState) => Partial<InternalState>
+    ): InternalState => {
+      const base: InternalState = { ...INITIAL_INTERNAL, forScrapeId: scrapeId };
+      return { ...base, ...patch(base) };
+    };
+
+    const update = (patch: (s: InternalState) => Partial<InternalState>) => {
+      setState((s) =>
+        s.forScrapeId === scrapeId
+          ? { ...s, ...patch(s) }
+          : fresh(patch),
+      );
+    };
 
     const es = new EventSource(`${API_URL}/api/scrape/${scrapeId}/stream`);
     esRef.current = es;
 
     es.addEventListener("log", (e) => {
-      setStatus("streaming");
       const data: LogEntry = JSON.parse(e.data);
-      setLogs((prev) => [...prev, data]);
+      update((s) => ({ status: "streaming", logs: [...s.logs, data] }));
     });
 
     es.addEventListener("product", (e) => {
-      setStatus("streaming");
-      setPausedReason(null);
       const data: ProductRecord = JSON.parse(e.data);
-      setProducts((prev) => [...prev, data]);
+      update((s) => ({
+        status: "streaming",
+        pausedReason: null,
+        products: [...s.products, data],
+      }));
     });
 
     es.addEventListener("product_update", (e) => {
       const upd: ProductUpdate = JSON.parse(e.data);
-      setProducts((prev) =>
-        prev.map((p) =>
+      update((s) => ({
+        products: s.products.map((p) =>
           p.item_id === upd.item_id
             ? {
                 ...p,
-                monthly_sold_count: upd.monthly_sold_count ?? p.monthly_sold_count,
-                monthly_sold_text: upd.monthly_sold_text ?? p.monthly_sold_text,
+                monthly_sold_count:
+                  upd.monthly_sold_count ?? p.monthly_sold_count,
+                monthly_sold_text:
+                  upd.monthly_sold_text ?? p.monthly_sold_text,
               }
-            : p
-        )
-      );
+            : p,
+        ),
+      }));
     });
 
     es.addEventListener("login_required", () => {
-      setPausedReason("login");
+      update(() => ({ pausedReason: "login" }));
     });
 
     es.addEventListener("captcha_required", () => {
-      setPausedReason("captcha");
+      update(() => ({ pausedReason: "captcha" }));
     });
 
     es.addEventListener("done", (e) => {
       const data: DoneInfo = JSON.parse(e.data);
-      setDoneInfo(data);
-      setStatus("done");
-      setPausedReason(null);
+      update(() => ({
+        status: "done",
+        doneInfo: data,
+        pausedReason: null,
+      }));
       es.close();
     });
 
     es.addEventListener("cancelled", (e) => {
       const data: DoneInfo = JSON.parse(e.data);
-      setDoneInfo(data);
-      setStatus("cancelled");
-      setPausedReason(null);
+      update(() => ({
+        status: "cancelled",
+        doneInfo: data,
+        pausedReason: null,
+      }));
       es.close();
     });
 
     es.addEventListener("error", () => {
       if (es.readyState === EventSource.CLOSED) {
-        setStatus("error");
-        setError("Connection lost");
+        update(() => ({ status: "error", error: "Connection lost" }));
       }
     });
 
@@ -109,12 +141,10 @@ export function useScrapeStream(scrapeId: string | null): ScrapeStreamState {
     };
   }, [scrapeId]);
 
-  return {
-    logs,
-    products,
-    doneInfo,
-    status,
-    error,
-    pausedReason,
-  };
+  if (state.forScrapeId !== scrapeId) {
+    return DEFAULTS;
+  }
+  const { forScrapeId: _ignored, ...exposed } = state;
+  void _ignored;
+  return exposed;
 }

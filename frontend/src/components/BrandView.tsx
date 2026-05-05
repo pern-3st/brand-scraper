@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deleteRun, getBrand, listRuns } from "@/lib/api";
+import { deleteRun, deleteSource, getBrand, listRuns } from "@/lib/api";
 import type { BrandDetail, RunSummary, Source } from "@/types";
 import AddSourceDrawer from "./AddSourceDrawer";
+import ConfirmDialog from "./shell/ConfirmDialog";
+import { RowMenu } from "./shell/RowMenu";
 import { formatPlatform } from "@/lib/format";
 
 export default function BrandView({
@@ -21,17 +23,61 @@ export default function BrandView({
   );
   const [adding, setAdding] = useState(false);
   const [editingSource, setEditingSource] = useState<Source | null>(null);
+  const [pendingDeleteSource, setPendingDeleteSource] = useState<Source | null>(
+    null,
+  );
+  const [pendingDeleteRun, setPendingDeleteRun] = useState<{
+    sourceId: string;
+    runId: string;
+  } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const reload = () => setRefreshKey((k) => k + 1);
 
-  async function reload() {
-    const d = await getBrand(brandId);
-    setDetail(d);
-    const runs: Record<string, RunSummary[]> = {};
-    for (const s of d.sources) runs[s.id] = await listRuns(brandId, s.id);
-    setRunsBySource(runs);
+  async function handleConfirmDeleteSource() {
+    if (!pendingDeleteSource) return;
+    const source = pendingDeleteSource;
+    setPendingDeleteSource(null);
+    try {
+      await deleteSource(brandId, source.id);
+    } catch (err) {
+      alert(
+        `Failed to delete source: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    await reload();
   }
+
+  async function handleConfirmDeleteRun() {
+    if (!pendingDeleteRun) return;
+    const { sourceId, runId } = pendingDeleteRun;
+    setPendingDeleteRun(null);
+    try {
+      await deleteRun(brandId, sourceId, runId);
+    } catch (err) {
+      alert(
+        `Failed to delete run: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    await reload();
+  }
+
   useEffect(() => {
-    reload();
-  }, [brandId]);
+    let cancelled = false;
+    (async () => {
+      const d = await getBrand(brandId);
+      if (cancelled) return;
+      setDetail(d);
+      const runs: Record<string, RunSummary[]> = {};
+      for (const s of d.sources) runs[s.id] = await listRuns(brandId, s.id);
+      if (cancelled) return;
+      setRunsBySource(runs);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, refreshKey]);
 
   if (!detail) return <p className="text-sm text-muted-fg">Loading…</p>;
 
@@ -61,16 +107,10 @@ export default function BrandView({
           onStartScrape={() => onStartScrape(source.id)}
           onOpenRun={(runId) => onOpenRun(source.id, runId)}
           onEdit={() => setEditingSource(source)}
-          onDeleteRun={async (runId) => {
-            if (!confirm("Delete this run? This cannot be undone.")) return;
-            try {
-              await deleteRun(brandId, source.id, runId);
-            } catch (err) {
-              alert(`Failed to delete run: ${err instanceof Error ? err.message : String(err)}`);
-              return;
-            }
-            await reload();
-          }}
+          onDelete={() => setPendingDeleteSource(source)}
+          onDeleteRun={(runId) =>
+            setPendingDeleteRun({ sourceId: source.id, runId })
+          }
         />
       ))}
 
@@ -84,6 +124,7 @@ export default function BrandView({
       )}
 
       <AddSourceDrawer
+        key={editingSource?.id ?? "new"}
         open={adding || editingSource !== null}
         brandId={brandId}
         sources={detail.sources}
@@ -98,6 +139,32 @@ export default function BrandView({
           await reload();
         }}
       />
+
+      {pendingDeleteSource && (
+        <ConfirmDialog
+          title="Delete source?"
+          body={
+            <>
+              This will permanently delete{" "}
+              <span className="font-medium">{pendingDeleteSource.name}</span>{" "}
+              and all of its runs and enrichments. This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteSource(null)}
+          onConfirm={handleConfirmDeleteSource}
+        />
+      )}
+
+      {pendingDeleteRun && (
+        <ConfirmDialog
+          title="Delete run?"
+          body={<>This will permanently delete this run. This cannot be undone.</>}
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteRun(null)}
+          onConfirm={handleConfirmDeleteRun}
+        />
+      )}
     </div>
   );
 }
@@ -108,6 +175,7 @@ function SourceCard({
   onStartScrape,
   onOpenRun,
   onEdit,
+  onDelete,
   onDeleteRun,
 }: {
   source: Source;
@@ -115,7 +183,8 @@ function SourceCard({
   onStartScrape: () => void;
   onOpenRun: (runId: string) => void;
   onEdit: () => void;
-  onDeleteRun: (runId: string) => void | Promise<void>;
+  onDelete: () => void;
+  onDeleteRun: (runId: string) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const latest = runs[0] ?? null;
@@ -123,7 +192,7 @@ function SourceCard({
   const visibleRuns = showAll ? runs : runs.slice(0, 3);
 
   return (
-    <section className="rounded-2xl bg-card ring-1 ring-border p-6 space-y-5">
+    <section className="group/card rounded-2xl bg-card ring-1 ring-border p-6 space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1 min-w-0">
           <h2 className="text-lg font-semibold text-foreground truncate">
@@ -133,12 +202,16 @@ function SourceCard({
             {formatPlatform(source.platform)} · {primaryUrl(source)}
           </div>
         </div>
-        <button
-          onClick={onEdit}
-          className="text-xs text-foreground/50 hover:text-foreground/80 uppercase tracking-wider shrink-0"
-        >
-          Edit
-        </button>
+        <div className="shrink-0">
+          <RowMenu
+            ariaLabel="Source actions"
+            parentGroup="card"
+            items={[
+              { label: "Edit", onSelect: onEdit },
+              { label: "Delete", destructive: true, onSelect: onDelete },
+            ]}
+          />
+        </div>
       </div>
 
       {configRows(source).length > 0 && (
@@ -195,13 +268,18 @@ function SourceCard({
                         : "—"}
                     </span>
                   </button>
-                  <button
-                    onClick={() => onDeleteRun(run.id)}
-                    aria-label="Delete run"
-                    className="text-xs text-foreground/40 hover:text-red-500 uppercase tracking-wider shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    Delete
-                  </button>
+                  <div className="shrink-0">
+                    <RowMenu
+                      ariaLabel="Run actions"
+                      items={[
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: () => onDeleteRun(run.id),
+                        },
+                      ]}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

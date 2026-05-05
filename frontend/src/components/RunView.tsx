@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   deleteEnrichment,
   getBrand,
@@ -20,6 +20,8 @@ import type {
 } from "@/types";
 import SnapshotTable from "./SnapshotTable";
 import LogFeed from "./shell/LogFeed";
+import ConfirmDialog from "./shell/ConfirmDialog";
+import { RowMenu } from "./shell/RowMenu";
 import EnrichmentPanel from "./EnrichmentPanel";
 import EnrichmentDetailPanel from "./EnrichmentDetailPanel";
 
@@ -53,38 +55,51 @@ export default function RunView({
   const [panelOpen, setPanelOpen] = useState(false);
   const [tableError, setTableError] = useState<string | null>(null);
   const [selectedEnrichmentId, setSelectedEnrichmentId] = useState<string | null>(null);
-
-  const loadTable = useCallback(async () => {
-    setTableError(null);
-    try {
-      const [t, e] = await Promise.all([
-        getUnifiedTable(brandId, sourceId, runId, include),
-        listEnrichments(brandId, sourceId, runId),
-      ]);
-      setTable(t);
-      setEnrichments(e);
-    } catch (err) {
-      setTableError((err as Error).message);
-    }
-  }, [brandId, sourceId, runId, include]);
+  const [tableRefreshKey, setTableRefreshKey] = useState(0);
+  const [pendingDeleteEnrichment, setPendingDeleteEnrichment] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const [p, b, l] = await Promise.all([
         getRun(brandId, sourceId, runId) as Promise<RunPayload>,
         getBrand(brandId),
         getRunLogs(brandId, sourceId, runId),
       ]);
+      if (cancelled) return;
       setPayload(p);
       setSource(b.sources.find((s) => s.id === sourceId) ?? null);
       setLogs(l);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [brandId, sourceId, runId]);
 
   useEffect(() => {
     if (payload === null) return;
-    loadTable();
-  }, [payload, loadTable]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [t, e] = await Promise.all([
+          getUnifiedTable(brandId, sourceId, runId, include),
+          listEnrichments(brandId, sourceId, runId),
+        ]);
+        if (cancelled) return;
+        setTableError(null);
+        setTable(t);
+        setEnrichments(e);
+      } catch (err) {
+        if (cancelled) return;
+        setTableError((err as Error).message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payload, brandId, sourceId, runId, include, tableRefreshKey]);
 
   const platform = (source?.platform ?? null) as Platform | null;
   const canEnrich =
@@ -105,15 +120,17 @@ export default function RunView({
     [enrichments],
   );
 
-  async function handleDeleteEnrichment(enrichmentId: string) {
-    if (!confirm("Delete this enrichment pass? This cannot be undone.")) return;
+  async function handleConfirmDeleteEnrichment() {
+    if (!pendingDeleteEnrichment) return;
+    const enrichmentId = pendingDeleteEnrichment;
+    setPendingDeleteEnrichment(null);
     try {
       await deleteEnrichment(brandId, sourceId, runId, enrichmentId);
     } catch (err) {
       alert(`Failed to delete enrichment: ${(err as Error).message}`);
       return;
     }
-    await loadTable();
+    setTableRefreshKey((k) => k + 1);
   }
 
   if (!payload || !source)
@@ -139,7 +156,7 @@ export default function RunView({
               enrichments={enrichments}
               include={include}
               onIncludeChange={setInclude}
-              onDelete={handleDeleteEnrichment}
+              onDelete={(id) => setPendingDeleteEnrichment(id)}
               onSelect={setSelectedEnrichmentId}
             />
           )}
@@ -223,6 +240,21 @@ export default function RunView({
             />
           );
         })()}
+
+      {pendingDeleteEnrichment && (
+        <ConfirmDialog
+          title="Delete enrichment?"
+          body={
+            <>
+              This will permanently delete this enrichment pass. This cannot be
+              undone.
+            </>
+          }
+          confirmLabel="Delete"
+          onCancel={() => setPendingDeleteEnrichment(null)}
+          onConfirm={handleConfirmDeleteEnrichment}
+        />
+      )}
     </div>
   );
 }
@@ -277,57 +309,53 @@ function EnrichmentsMenu({
             </div>
             <ul className="max-h-72 overflow-y-auto divide-y divide-border">
               {enrichments.map((e) => (
-                <li key={e.id} className="group">
+                <li
+                  key={e.id}
+                  className="group flex items-center gap-2 pr-2 hover:bg-muted/60 transition-colors"
+                >
                   <button
                     type="button"
                     onClick={() => {
                       setOpen(false);
                       onSelect(e.id);
                     }}
-                    className="w-full px-3 py-2 flex items-center justify-between gap-3 text-xs text-left hover:bg-muted/60 transition-colors"
+                    className="flex-1 min-w-0 px-3 py-2 text-xs text-left"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className="font-mono text-[11px] text-foreground/80 truncate"
-                        title={e.id}
-                      >
-                        {e.id}
-                      </div>
-                      <div className="text-muted-fg">
-                        {e.status}
-                        {typeof e.aggregates.products_enriched === "number" && (
-                          <> · {e.aggregates.products_enriched} enriched</>
-                        )}
-                        {typeof e.aggregates.products_failed === "number" &&
-                          e.aggregates.products_failed > 0 && (
-                            <span className="text-pink-700">
-                              {" · "}
-                              {e.aggregates.products_failed} failed
-                            </span>
-                          )}
-                      </div>
-                    </div>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        onDelete(e.id);
-                      }}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.stopPropagation();
-                          ev.preventDefault();
-                          onDelete(e.id);
-                        }
-                      }}
-                      className="shrink-0 text-foreground/30 hover:text-danger-fg opacity-0 group-hover:opacity-100 transition-opacity px-1 cursor-pointer"
-                      aria-label="Delete enrichment"
-                      title="Delete enrichment"
+                    <div
+                      className="font-mono text-[11px] text-foreground/80 truncate"
+                      title={e.id}
                     >
-                      ×
-                    </span>
+                      {e.id}
+                    </div>
+                    <div className="text-muted-fg">
+                      {e.status}
+                      {typeof e.aggregates.products_enriched === "number" && (
+                        <> · {e.aggregates.products_enriched} enriched</>
+                      )}
+                      {typeof e.aggregates.products_failed === "number" &&
+                        e.aggregates.products_failed > 0 && (
+                          <span className="text-pink-700">
+                            {" · "}
+                            {e.aggregates.products_failed} failed
+                          </span>
+                        )}
+                    </div>
                   </button>
+                  <div className="shrink-0">
+                    <RowMenu
+                      ariaLabel="Enrichment actions"
+                      items={[
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: () => {
+                            setOpen(false);
+                            onDelete(e.id);
+                          },
+                        },
+                      ]}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

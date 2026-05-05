@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Dashboard from "@/components/Dashboard";
 import BrandView from "@/components/BrandView";
 import ScrapingView from "@/components/ScrapingView";
@@ -46,6 +46,23 @@ function viewToUrl(view: View): string {
   return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
 }
 
+function subscribeURL(cb: () => void): () => void {
+  window.addEventListener("popstate", cb);
+  window.addEventListener("urlchange", cb);
+  return () => {
+    window.removeEventListener("popstate", cb);
+    window.removeEventListener("urlchange", cb);
+  };
+}
+
+function getURLSearch(): string {
+  return window.location.search;
+}
+
+function getServerURLSearch(): string {
+  return "";
+}
+
 function urlToView(search: string): View {
   const p = new URLSearchParams(search);
   const brand = p.get("brand");
@@ -67,32 +84,26 @@ function urlToView(search: string): View {
 }
 
 export default function Home() {
-  const [view, setViewState] = useState<View>({ screen: "dashboard" });
+  const search = useSyncExternalStore(
+    subscribeURL,
+    getURLSearch,
+    getServerURLSearch,
+  );
+  const view = useMemo(() => urlToView(search), [search]);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const viewRef = useRef(view);
-  useEffect(() => {
-    viewRef.current = view;
-  });
 
   useEffect(() => {
     const initial = urlToView(window.location.search);
-    if (initial.screen !== "dashboard") setViewState(initial);
     window.history.replaceState({ view: initial }, "", viewToUrl(initial));
-    const onPop = (e: PopStateEvent) => {
-      const next = (e.state?.view as View | undefined) ?? urlToView(window.location.search);
-      setViewState(next);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const setView = (next: View) => {
     const op =
-      isTransient(next.screen) || isTransient(viewRef.current.screen)
+      isTransient(next.screen) || isTransient(view.screen)
         ? "replaceState"
         : "pushState";
     window.history[op]({ view: next }, "", viewToUrl(next));
-    setViewState(next);
+    window.dispatchEvent(new Event("urlchange"));
   };
 
   const crumbs: Crumb[] = (() => {
@@ -145,38 +156,38 @@ export default function Home() {
     ];
   })();
 
+  const containerWidth =
+    view.screen === "run" ? "max-w-[1600px]" : "max-w-5xl";
+
   return (
     <main className="min-h-screen">
-      <header className="px-8 py-8 flex items-center justify-between gap-4">
-        <Breadcrumb crumbs={crumbs} />
-        <button
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Settings"
-          title="Settings"
-          className="cursor-pointer text-foreground/40 hover:text-foreground/80 transition-colors"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+      <div className={`mx-auto px-6 ${containerWidth}`}>
+        <header className="py-8 flex items-center justify-between gap-4">
+          <Breadcrumb crumbs={crumbs} />
+          <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+            title="Settings"
+            className="cursor-pointer text-foreground/40 hover:text-foreground/80 transition-colors"
           >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-      </header>
-      <div
-        className={`mx-auto px-6 pb-12 ${
-          view.screen === "run" ? "max-w-[1600px]" : "max-w-5xl"
-        }`}
-      >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </header>
+        <div className="pb-12">
         {view.screen === "dashboard" && (
           <Dashboard
             onOpenBrand={(brandId) => setView({ screen: "brand", brandId })}
@@ -243,6 +254,7 @@ export default function Home() {
             }
           />
         )}
+        </div>
       </div>
       <SettingsModal
         open={settingsOpen}

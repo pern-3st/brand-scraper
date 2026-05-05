@@ -37,7 +37,7 @@ export default function AddSourceForm({
     initialCategoriesForSection,
   );
   const [maxProducts, setMaxProducts] = useState(
-    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 500,
+    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 1000,
   );
   const [skipMenuNavigation, setSkipMenuNavigation] = useState(
     typeof initialSpec?.skip_menu_navigation === "boolean"

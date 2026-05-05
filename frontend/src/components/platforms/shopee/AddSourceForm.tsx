@@ -18,7 +18,7 @@ export default function AddSourceForm({
     typeof initialSpec?.shop_url === "string" ? initialSpec.shop_url : "",
   );
   const [maxProducts, setMaxProducts] = useState(
-    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 500,
+    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 1000,
   );
   const canSubmit = shopUrl.trim() !== "";
   return (
