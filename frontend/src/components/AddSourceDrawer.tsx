@@ -24,6 +24,8 @@ export default function AddSourceDrawer({
 }) {
   const [platform, setPlatform] = useState<Platform>("official_site");
   const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState(editingSource?.name ?? "");
+  const [nameDirty, setNameDirty] = useState(!!editingSource?.name);
 
   if (!open) return null;
 
@@ -35,11 +37,16 @@ export default function AddSourceDrawer({
 
   async function submit(spec: Record<string, unknown>) {
     setError(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Name is required");
+      return;
+    }
     try {
       if (editingSource) {
-        await updateSource(brandId, editingSource.id, spec);
+        await updateSource(brandId, editingSource.id, { name: trimmed, spec });
       } else {
-        await createSource(brandId, activePlatform, spec);
+        await createSource(brandId, activePlatform, trimmed, spec);
       }
       onCreated();
     } catch (e) {
@@ -53,7 +60,6 @@ export default function AddSourceDrawer({
     }
   }
 
-  // Force form remount when switching between sources so initialSpec is re-read
   const formKey = editingSource?.id ?? `new-${activePlatform}`;
 
   return (
@@ -93,6 +99,22 @@ export default function AddSourceDrawer({
           </div>
         )}
 
+        <label className="block space-y-1">
+          <span className="text-xs text-muted-fg uppercase tracking-wider">
+            Name
+          </span>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameDirty(true);
+            }}
+            placeholder="e.g. Shopee SG"
+            className="w-full rounded-xl bg-white ring-1 ring-border px-4 py-2.5 text-sm placeholder:text-muted-fg focus:outline-none focus:ring-2 focus:ring-accent/40 transition-shadow"
+          />
+        </label>
+
         {activePlatform === "official_site" ? (
           <OfficialSiteAddSourceForm
             key={formKey}
@@ -101,6 +123,9 @@ export default function AddSourceDrawer({
             onSubmit={submit}
             initialSpec={initialSpec}
             submitLabel={isEditing ? "Save changes" : "Add source"}
+            onPrimaryUrlChange={(url) => {
+              if (!nameDirty) setName(url);
+            }}
           />
         ) : (
           <ShopeeAddSourceForm
@@ -108,6 +133,9 @@ export default function AddSourceDrawer({
             onSubmit={submit}
             initialSpec={initialSpec}
             submitLabel={isEditing ? "Save changes" : "Add source"}
+            onPrimaryUrlChange={(url) => {
+              if (!nameDirty) setName(url);
+            }}
           />
         )}
 

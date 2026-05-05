@@ -12,7 +12,7 @@ def _seed_brand_source_run(client, tmp_repo, platform="official_site"):
     brand = client.post("/api/brands", json={"name": "LogEnr"}).json()
     src = client.post(
         f"/api/brands/{brand['id']}/sources",
-        json={"platform": platform, "spec": {
+        json={"platform": platform, "name": "LogEnr Source", "spec": {
             "brand_url": "https://logenr.test",
             "section": "mens",
             "categories": ["shoes"],

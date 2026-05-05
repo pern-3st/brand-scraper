@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, TypeAdapter
 
-from app import settings as app_settings
+from app import login_session, settings as app_settings
 from app.brands import BrandAlreadyExists
 from app.models import (
     EnrichmentRequest,
@@ -51,6 +51,7 @@ class SourceOut(BaseModel):
     id: str
     brand_id: str
     platform: str
+    name: str
     spec: dict[str, Any]
     created_at: str
 
@@ -82,11 +83,13 @@ class BrandDetailOut(BaseModel):
 
 class CreateSourceIn(BaseModel):
     platform: str
+    name: str = Field(min_length=1, max_length=100)
     spec: dict[str, Any]
 
 
 class UpdateSourceIn(BaseModel):
-    spec: dict[str, Any]
+    spec: dict[str, Any] | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 def _validate_spec_for_platform(platform: str, spec: dict[str, Any]) -> None:
@@ -172,7 +175,10 @@ async def create_source(brand_id: str, payload: CreateSourceIn):
     # Drop any `platform` key from spec — platform lives on the Source, not the spec.
     spec = {k: v for k, v in payload.spec.items() if k != "platform"}
     _validate_spec_for_platform(payload.platform, spec)
-    source = repo.add_source(brand_id=brand_id, platform=payload.platform, spec=spec)
+    source = repo.add_source(
+        brand_id=brand_id, platform=payload.platform,
+        name=payload.name.strip(), spec=spec,
+    )
     return SourceOut(**source.__dict__)
 
 
@@ -186,9 +192,12 @@ async def update_source(brand_id: str, source_id: str, payload: UpdateSourceIn):
     for sess in sessions.values():
         if getattr(sess, "brand_id", None) == brand_id and getattr(sess, "source_id", None) == source_id:
             raise HTTPException(409, "cannot edit source while a run is in flight")
-    spec = {k: v for k, v in payload.spec.items() if k != "platform"}
-    _validate_spec_for_platform(source.platform, spec)
-    updated = repo.update_source_spec(brand_id, source_id, spec=spec)
+    spec = payload.spec
+    if spec is not None:
+        spec = {k: v for k, v in spec.items() if k != "platform"}
+        _validate_spec_for_platform(source.platform, spec)
+    name = payload.name.strip() if payload.name is not None else None
+    updated = repo.update_source(brand_id, source_id, spec=spec, name=name)
     return SourceOut(**updated.__dict__)
 
 
@@ -263,6 +272,11 @@ async def start_scrape(payload: StartScrapeIn) -> ScrapeStartResponse:
     for sess in sessions.values():
         if sess.brand_id == payload.brand_id and sess.source_id == payload.source_id:
             raise HTTPException(409, "a run is already in flight for this source")
+    if source.platform == "shopee" and login_session.is_open():
+        raise HTTPException(
+            409,
+            "shopee login session is open — close it in Settings before starting a scrape",
+        )
     scrape_id = uuid.uuid4().hex[:12]
     session = ScrapeSession(
         id=scrape_id,
@@ -330,6 +344,24 @@ class EnrichmentSummaryOut(BaseModel):
     request: dict[str, Any]
 
 
+class EnrichmentHistoryRequestOut(BaseModel):
+    curated_fields: list[str]
+    freeform_prompts: list[dict[str, Any]]
+
+
+class SavedFreeformPromptOut(BaseModel):
+    id: str
+    label: str
+    prompt: str
+    last_used_at: str
+    use_count: int
+
+
+class EnrichmentHistoryOut(BaseModel):
+    most_recent: EnrichmentHistoryRequestOut | None
+    saved_prompts: list[SavedFreeformPromptOut]
+
+
 def _validate_enrichment_request(platform: str, request: EnrichmentRequest) -> None:
     """Reject requests that ask for unknown curated fields or freeform
     prompts on a platform that doesn't support them. Identifier safety
@@ -348,6 +380,19 @@ def _validate_enrichment_request(platform: str, request: EnrichmentRequest) -> N
         raise HTTPException(
             422, f"platform {platform!r} does not support freeform prompts"
         )
+
+
+@app.get(
+    "/api/brands/{brand_id}/enrichment_history",
+    response_model=EnrichmentHistoryOut,
+)
+async def get_enrichment_history(brand_id: str, platform: str) -> EnrichmentHistoryOut:
+    repo = get_repo()
+    try:
+        history = repo.get_enrichment_history(brand_id, platform=platform)
+    except KeyError:
+        raise HTTPException(404, f"brand {brand_id!r} not found")
+    return EnrichmentHistoryOut(**history)
 
 
 @app.get("/api/platforms/{platform}/enrichment_fields", response_model=EnrichmentFieldsOut)
@@ -390,6 +435,11 @@ async def start_enrichment(
     for sess in sessions.values():
         if sess.brand_id == brand_id and sess.source_id == source_id:
             raise HTTPException(409, "a run is already in flight for this source")
+    if platform == "shopee" and login_session.is_open():
+        raise HTTPException(
+            409,
+            "shopee login session is open — close it in Settings before starting enrichment",
+        )
 
     session_id = uuid.uuid4().hex[:12]
     session = ScrapeSession(
@@ -516,3 +566,45 @@ async def update_settings(payload: UpdateSettingsIn) -> SettingsOut:
         openrouter_model=model,
     )
     return SettingsOut(**app_settings.masked_view())
+
+
+# ---- shopee login session endpoints ----
+
+class ShopeeLoginStatusOut(BaseModel):
+    open: bool
+    profile_dir: str | None = None
+    opened_at: str | None = None
+    error: str | None = None
+
+
+@app.get("/api/settings/shopee/login", response_model=ShopeeLoginStatusOut)
+async def get_shopee_login_status() -> ShopeeLoginStatusOut:
+    return ShopeeLoginStatusOut(**login_session.status())
+
+
+@app.post("/api/settings/shopee/login/open", response_model=ShopeeLoginStatusOut)
+async def open_shopee_login() -> ShopeeLoginStatusOut:
+    # Block if any shopee scrape/enrichment is in flight — they'd collide
+    # on the same persistent profile dir.
+    for sess in sessions.values():
+        source = get_repo().get_source(sess.brand_id, sess.source_id)
+        if source and source.platform == "shopee":
+            raise HTTPException(
+                409,
+                "a shopee scrape/enrichment is in flight — wait for it to finish",
+            )
+    result = await login_session.open_session()
+    # Give the background task a beat to actually launch chrome before we
+    # report status, so the UI's "open" badge is accurate.
+    await asyncio.sleep(0.2)
+    payload = login_session.status()
+    payload["error"] = result.get("error") or payload.get("error")
+    return ShopeeLoginStatusOut(**payload)
+
+
+@app.post("/api/settings/shopee/login/close", response_model=ShopeeLoginStatusOut)
+async def close_shopee_login() -> ShopeeLoginStatusOut:
+    result = await login_session.close_session()
+    payload = login_session.status()
+    payload["error"] = result.get("error") or payload.get("error")
+    return ShopeeLoginStatusOut(**payload)

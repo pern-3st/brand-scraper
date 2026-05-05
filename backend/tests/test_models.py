@@ -128,3 +128,71 @@ class TestEnrichmentRequest:
         )
         # Sanitised in place — downstream code uses .id directly as a Pydantic field name.
         assert req.freeform_prompts[0].id == "is_vegan_"
+
+
+from datetime import datetime, timezone
+
+from app.models import ProductRecord, ProductUpdate
+
+
+class TestProductRecordMonthlySold:
+    def test_defaults_to_none(self):
+        rec = ProductRecord(
+            product_name="x",
+            scraped_at=datetime.now(timezone.utc),
+        )
+        assert rec.monthly_sold_count is None
+        assert rec.monthly_sold_text is None
+
+    def test_round_trips_through_json(self):
+        rec = ProductRecord(
+            product_name="x",
+            scraped_at=datetime.now(timezone.utc),
+            monthly_sold_count=42,
+            monthly_sold_text="42 sold/mo",
+        )
+        restored = ProductRecord.model_validate(rec.model_dump(mode="json"))
+        assert restored.monthly_sold_count == 42
+        assert restored.monthly_sold_text == "42 sold/mo"
+
+
+class TestProductUpdate:
+    def test_minimal(self):
+        upd = ProductUpdate(item_id=123)
+        assert upd.item_id == 123
+        assert upd.monthly_sold_count is None
+        assert upd.monthly_sold_text is None
+
+    def test_round_trips(self):
+        upd = ProductUpdate(item_id=123, monthly_sold_count=42, monthly_sold_text="42 sold")
+        restored = ProductUpdate.model_validate(upd.model_dump(mode="json"))
+        assert restored == upd
+
+    def test_rejects_missing_item_id(self):
+        with pytest.raises(ValueError):
+            ProductUpdate(monthly_sold_count=42)
+
+
+class TestProductRecordRcmdItemsFields:
+    def test_new_fields_default_to_none_or_empty(self):
+        rec = ProductRecord(
+            product_name="x",
+            scraped_at=datetime.now(timezone.utc),
+        )
+        assert rec.category_id is None
+        assert rec.brand is None
+        assert rec.liked_count is None
+        assert rec.promotion_labels == []
+        assert rec.voucher_code is None
+        assert rec.voucher_discount is None
+
+
+class TestProductUpdateRcmdItemsFields:
+    def test_new_fields_default_to_none(self):
+        upd = ProductUpdate(item_id=1)
+        assert upd.category_id is None
+        assert upd.brand is None
+        assert upd.liked_count is None
+        assert upd.promotion_labels is None
+        assert upd.voucher_code is None
+        assert upd.voucher_discount is None

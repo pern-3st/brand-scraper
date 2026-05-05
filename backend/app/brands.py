@@ -69,6 +69,39 @@ class BrandRepo:
     def __init__(self, root: Path):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self._backfill_source_names()
+
+    def _backfill_source_names(self) -> None:
+        """One-shot: ensure every source.json has a `name` field. Derives the
+        name from the platform's primary URL (`shop_url` for Shopee,
+        `brand_url` for official_site). Idempotent — sources that already
+        have a `name` are left alone."""
+        if not self.root.exists():
+            return
+        for brand_dir in self.root.iterdir():
+            sources_dir = brand_dir / "sources"
+            if not sources_dir.exists():
+                continue
+            for source_dir in sources_dir.iterdir():
+                sj = source_dir / "source.json"
+                if not sj.exists():
+                    continue
+                try:
+                    data = json.loads(sj.read_text())
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(data.get("name"), str) and data["name"]:
+                    continue
+                spec = data.get("spec") or {}
+                derived = (
+                    spec.get("shop_url")
+                    if data.get("platform") == "shopee"
+                    else spec.get("brand_url")
+                )
+                if not isinstance(derived, str) or not derived:
+                    derived = data.get("id", "unnamed")
+                data["name"] = derived
+                sj.write_text(json.dumps(data, indent=2))
 
     def _brand_dir(self, brand_id: str) -> Path:
         return self.root / brand_id
@@ -116,7 +149,9 @@ class BrandRepo:
     def _source_dir(self, brand_id: str, source_id: str) -> Path:
         return self._sources_dir(brand_id) / source_id
 
-    def add_source(self, *, brand_id: str, platform: str, spec: dict[str, Any]) -> "Source":
+    def add_source(
+        self, *, brand_id: str, platform: str, name: str, spec: dict[str, Any]
+    ) -> "Source":
         if self.get_brand(brand_id) is None:
             raise KeyError(f"brand {brand_id!r} not found")
         source_id = _new_source_id()
@@ -127,6 +162,7 @@ class BrandRepo:
             id=source_id,
             brand_id=brand_id,
             platform=platform,
+            name=name,
             spec=spec,
             created_at=_now_iso(),
         )
@@ -150,7 +186,14 @@ class BrandRepo:
                 out.append(Source(**json.loads(sj.read_text())))
         return out
 
-    def update_source_spec(self, brand_id: str, source_id: str, *, spec: dict[str, Any]) -> "Source":
+    def update_source(
+        self,
+        brand_id: str,
+        source_id: str,
+        *,
+        spec: dict[str, Any] | None = None,
+        name: str | None = None,
+    ) -> "Source":
         existing = self.get_source(brand_id, source_id)
         if existing is None:
             raise SourceNotFound(f"source {source_id!r} not found under {brand_id!r}")
@@ -158,7 +201,8 @@ class BrandRepo:
             id=existing.id,
             brand_id=existing.brand_id,
             platform=existing.platform,
-            spec=spec,
+            name=existing.name if name is None else name,
+            spec=existing.spec if spec is None else spec,
             created_at=existing.created_at,
         )
         path = self._source_dir(brand_id, source_id) / "source.json"
@@ -331,6 +375,94 @@ class BrandRepo:
             })
         out.sort(key=lambda e: e["id"], reverse=True)
         return out
+
+    def get_enrichment_history(
+        self, brand_id: str, *, platform: str
+    ) -> dict[str, Any]:
+        """Aggregate prior enrichment requests for a brand on a given platform.
+
+        Returns a dict with:
+          - ``most_recent``: the request payload from the newest enrichment
+            (curated_fields + freeform_prompts) so the UI can pre-fill it.
+            ``None`` if there are no prior enrichments.
+          - ``saved_prompts``: distinct freeform prompts across every pass for
+            the brand+platform, deduped by id, with ``use_count`` and
+            ``last_used_at``. Sorted newest-first by ``last_used_at``.
+
+        The newest pass wins for a prompt's ``label`` and ``prompt`` text — if
+        the user re-asks the same question with rephrased wording, the latest
+        wording is what they'll see next time.
+
+        Raises ``KeyError`` when the brand does not exist.
+        """
+        if self.get_brand(brand_id) is None:
+            raise KeyError(f"brand {brand_id!r} not found")
+
+        # Walk every pass (final or partial) under every source matching the
+        # platform. We carry (eid, request) tuples so we can sort by eid (which
+        # is timestamped).
+        passes: list[tuple[str, dict[str, Any]]] = []
+        for source in self.list_sources(brand_id):
+            if source.platform != platform:
+                continue
+            sdir = self._source_dir(brand_id, source.id) / "runs"
+            if not sdir.exists():
+                continue
+            for child in sdir.iterdir():
+                if not (child.is_dir() and child.name.endswith(ENRICHMENT_DIR_SUFFIX)):
+                    continue
+                for p in child.iterdir():
+                    name = p.name
+                    if name.endswith(".log.jsonl"):
+                        continue
+                    if name.endswith(".partial.json"):
+                        eid = name[: -len(".partial.json")]
+                    elif name.endswith(".json"):
+                        eid = name[: -len(".json")]
+                    else:
+                        continue
+                    try:
+                        data = json.loads(p.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        continue
+                    request = (data.get("_meta") or {}).get("request") or {}
+                    passes.append((eid, request))
+
+        passes.sort(key=lambda t: t[0], reverse=True)
+
+        most_recent: dict[str, Any] | None = None
+        if passes:
+            req = passes[0][1]
+            most_recent = {
+                "curated_fields": list(req.get("curated_fields") or []),
+                "freeform_prompts": list(req.get("freeform_prompts") or []),
+            }
+
+        # Dedupe freeform prompts by id; newest wording wins. Iterate newest
+        # first so the first sighting of an id keeps its wording.
+        prompts_by_id: dict[str, dict[str, Any]] = {}
+        for eid, req in passes:
+            for fp in req.get("freeform_prompts") or []:
+                if not isinstance(fp, dict):
+                    continue
+                fid = fp.get("id")
+                if not isinstance(fid, str):
+                    continue
+                existing = prompts_by_id.get(fid)
+                if existing is None:
+                    prompts_by_id[fid] = {
+                        "id": fid,
+                        "label": fp.get("label") or fid,
+                        "prompt": fp.get("prompt") or "",
+                        "last_used_at": eid,
+                        "use_count": 1,
+                    }
+                else:
+                    existing["use_count"] += 1
+
+        saved = list(prompts_by_id.values())
+        saved.sort(key=lambda p: p["last_used_at"], reverse=True)
+        return {"most_recent": most_recent, "saved_prompts": saved}
 
     def enriched_field_map(
         self, brand_id: str, source_id: str, run_id: str
@@ -541,6 +673,7 @@ class Source:
     id: str
     brand_id: str
     platform: str
+    name: str
     spec: dict[str, Any]
     created_at: str
 

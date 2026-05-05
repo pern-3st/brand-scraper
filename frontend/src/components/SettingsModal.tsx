@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings } from "@/lib/api";
-import type { Settings } from "@/types";
+import {
+  closeShopeeLogin,
+  getSettings,
+  getShopeeLoginStatus,
+  openShopeeLogin,
+  updateSettings,
+} from "@/lib/api";
+import type { Settings, ShopeeLoginStatus } from "@/types";
 
 export default function SettingsModal({
   open,
@@ -16,10 +22,14 @@ export default function SettingsModal({
   const [model, setModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [shopeeLogin, setShopeeLogin] = useState<ShopeeLoginStatus | null>(null);
+  const [shopeeBusy, setShopeeBusy] = useState(false);
+  const [shopeeError, setShopeeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setShopeeError(null);
     setApiKey("");
     getSettings()
       .then((s) => {
@@ -29,9 +39,35 @@ export default function SettingsModal({
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to load settings")
       );
+    getShopeeLoginStatus().then(setShopeeLogin).catch(() => {});
+  }, [open]);
+
+  // Poll login status while the modal is open so the UI flips back to
+  // "closed" when the user closes the chrome window directly.
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => {
+      getShopeeLoginStatus().then(setShopeeLogin).catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
   }, [open]);
 
   if (!open) return null;
+
+  async function toggleShopeeLogin() {
+    setShopeeError(null);
+    setShopeeBusy(true);
+    try {
+      const next = shopeeLogin?.open
+        ? await closeShopeeLogin()
+        : await openShopeeLogin();
+      setShopeeLogin(next);
+    } catch (e) {
+      setShopeeError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setShopeeBusy(false);
+    }
+  }
 
   async function save() {
     setError(null);
@@ -93,6 +129,43 @@ export default function SettingsModal({
             placeholder="x-ai/grok-4.1-fast"
             className="w-full rounded-xl bg-background ring-1 ring-border px-3 py-2 text-sm font-mono"
           />
+        </div>
+
+        <div className="space-y-1.5 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label className="text-xs font-medium text-foreground/70">
+                Shopee login
+              </label>
+              <p className="text-xs text-foreground/50 mt-0.5">
+                {shopeeLogin?.open
+                  ? "Browser open — log in, then click Close to save the session."
+                  : "Open a Chrome window to sign in to shopee.sg. Cookies persist for future scrapes."}
+              </p>
+            </div>
+            <button
+              onClick={toggleShopeeLogin}
+              disabled={shopeeBusy || shopeeLogin === null}
+              className={
+                "shrink-0 rounded-xl px-3 py-1.5 text-sm disabled:opacity-40 " +
+                (shopeeLogin?.open
+                  ? "bg-danger-fg text-white hover:opacity-90"
+                  : "bg-accent text-white hover:bg-accent-hover")
+              }
+            >
+              {shopeeBusy
+                ? "Working…"
+                : shopeeLogin?.open
+                  ? "Close"
+                  : "Open"}
+            </button>
+          </div>
+          {shopeeError && (
+            <p className="text-xs text-danger-fg">{shopeeError}</p>
+          )}
+          {shopeeLogin?.error && !shopeeError && (
+            <p className="text-xs text-danger-fg">{shopeeLogin.error}</p>
+          )}
         </div>
 
         {error && <p className="text-sm text-danger-fg">{error}</p>}

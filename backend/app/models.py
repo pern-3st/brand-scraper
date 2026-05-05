@@ -14,7 +14,7 @@ class OfficialSiteScrapeRequest(BaseModel):
     brand_url: HttpUrl
     section: str
     categories: list[str]
-    max_products: int = 10
+    max_products: int = 500
     skip_menu_navigation: bool = False
 
 
@@ -29,7 +29,9 @@ class ProductRecord(BaseModel):
 
     Core fields are shared. Platform-specific fields default to None/False
     and are populated only by their originating scraper:
-      - Shopee: item_id, rating_star, historical_sold_count
+      - Shopee: item_id, rating_star, historical_sold_count, monthly_sold_count,
+        category_id, brand, liked_count, promotion_labels, voucher_code,
+        voucher_discount
       - Official-site: category
 
     Platform identity is carried by the enclosing run's `_meta.platform`,
@@ -51,9 +53,40 @@ class ProductRecord(BaseModel):
     item_id: int | None = None
     rating_star: float | None = None
     historical_sold_count: int | None = None
+    monthly_sold_count: int | None = None
+    monthly_sold_text: str | None = None  # human-formatted, e.g. "1.2K"
+
+    # Shopee-only — harvested from /api/v4/shop/rcmd_items
+    category_id: str | None = None  # 6-digit "global" catid; stored as str so the UI doesn't render it as a thousands-separated number
+    brand: str | None = None
+    liked_count: int | None = None
+    promotion_labels: list[str] = Field(default_factory=list)
+    voucher_code: str | None = None
+    voucher_discount: int | None = None  # Shopee 1e5 micro-units (900000 = SGD 9.00 off)
 
     # Official-site-only
     category: str | None = None
+
+
+class ProductUpdate(BaseModel):
+    """Late-arriving partial update for a previously-yielded ProductRecord.
+
+    Shopee's rcmd_items XHR delivers monthly_sold + category_id + brand + likes
+    + promo metadata + voucher details asynchronously from grid extraction.
+    The runner matches by `item_id` and mutates the existing record; unknown
+    ids are dropped with a log line. `category` (the display name) is not
+    included — see docs/plans/2026-05-05-shopee-rcmd-items-migration.md
+    Task 4 (SKIPPED).
+    """
+    item_id: int
+    monthly_sold_count: int | None = None
+    monthly_sold_text: str | None = None
+    category_id: str | None = None
+    brand: str | None = None
+    liked_count: int | None = None
+    promotion_labels: list[str] | None = None
+    voucher_code: str | None = None
+    voucher_discount: int | None = None
 
 
 class ScrapeStartResponse(BaseModel):

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { API_URL } from "@/lib/api";
-import { LogEntry, ProductRecord, DoneInfo } from "@/types";
+import { LogEntry, ProductRecord, ProductUpdate, DoneInfo } from "@/types";
 
 export type StreamStatus =
   | "connecting"
@@ -55,6 +55,21 @@ export function useScrapeStream(scrapeId: string | null): ScrapeStreamState {
       setPausedReason(null);
       const data: ProductRecord = JSON.parse(e.data);
       setProducts((prev) => [...prev, data]);
+    });
+
+    es.addEventListener("product_update", (e) => {
+      const upd: ProductUpdate = JSON.parse(e.data);
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.item_id === upd.item_id
+            ? {
+                ...p,
+                monthly_sold_count: upd.monthly_sold_count ?? p.monthly_sold_count,
+                monthly_sold_text: upd.monthly_sold_text ?? p.monthly_sold_text,
+              }
+            : p
+        )
+      );
     });
 
     es.addEventListener("login_required", () => {

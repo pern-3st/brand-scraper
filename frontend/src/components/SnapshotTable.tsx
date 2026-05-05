@@ -1,7 +1,17 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+} from "@tanstack/react-table";
 import type { FieldType, UnifiedColumn } from "@/types";
+import FilterChips, { filterFns } from "./snapshot/FilterChips";
 
 export type TableRow = Record<string, unknown>;
 export type Renderer = (value: unknown, row: TableRow) => React.ReactNode;
@@ -12,6 +22,7 @@ interface Props {
   emptyMessage?: string;
   title?: string;
   rightLabel?: string;
+  interactive?: boolean;
 }
 
 // Columns that exist on ProductRecord but are folded into other cells
@@ -22,6 +33,8 @@ const HIDDEN_IDS = new Set([
   "mrp",
   "product_url",
   "product_key",
+  "monthly_sold_text",
+  "category",
 ]);
 
 const LABEL_OVERRIDES: Record<string, string> = {
@@ -29,11 +42,11 @@ const LABEL_OVERRIDES: Record<string, string> = {
   image_url: "Image",
   price: "Price",
   discount_pct: "Discount",
-  is_sold_out: "Status",
+  is_sold_out: "Sold out",
   item_id: "Item ID",
   rating_star: "Rating",
-  historical_sold_count: "Sold",
-  category: "Category",
+  historical_sold_count: "Sold (total)",
+  monthly_sold_count: "Sold (monthly)",
 };
 
 export default function SnapshotTable({
@@ -42,8 +55,54 @@ export default function SnapshotTable({
   emptyMessage = "No products.",
   title = "Products",
   rightLabel,
+  interactive = false,
 }: Props) {
-  const visible = columns.filter((c) => !HIDDEN_IDS.has(c.id));
+  const visible = useMemo(
+    () => columns.filter((c) => !HIDDEN_IDS.has(c.id)),
+    [columns],
+  );
+
+  const tanstackColumns = useMemo<ColumnDef<TableRow>[]>(
+    () =>
+      visible.map((c) => ({
+        id: c.id,
+        accessorFn: (row) => row[c.id],
+        header: labelFor(c),
+        enableSorting: true,
+        sortingFn: c.type === "int" || c.type === "float" ? "basic" : "alphanumeric",
+        filterFn: filterFns[c.id],
+        cell: ({ row }) => <Cell col={c} row={row.original} />,
+        meta: { col: c },
+      })),
+    [visible],
+  );
+
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  const table = useReactTable({
+    data: rows,
+    columns: tanstackColumns,
+    state: { sorting, globalFilter, columnFilters },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    globalFilterFn: (row, _columnId, value) => {
+      if (!value) return true;
+      const name = row.original.product_name;
+      return typeof name === "string"
+        ? name.toLowerCase().includes(String(value).toLowerCase())
+        : false;
+    },
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+
+  const renderRows = interactive
+    ? table.getRowModel().rows.map((r) => r.original)
+    : rows;
 
   return (
     <div className="rounded-2xl bg-card shadow-md shadow-accent/5 ring-1 ring-border overflow-hidden">
@@ -52,32 +111,85 @@ export default function SnapshotTable({
           {title}
         </h2>
         <span className="text-xs text-muted-fg">
-          {rightLabel ?? `${rows.length} items`}
+          {rightLabel ?? itemsLabel(interactive, table.getFilteredRowModel().rows.length, rows.length)}
         </span>
       </div>
+      {interactive && (
+        <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-border bg-card">
+          <div className="relative flex-1 min-w-[12rem] max-w-sm">
+            <input
+              type="text"
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              placeholder="Search name…"
+              aria-label="Search by name"
+              className="w-full rounded-lg bg-muted/60 ring-1 ring-border px-3 py-1.5 pr-7 text-xs text-foreground/90 placeholder:text-foreground/40 focus:outline-none focus:ring-accent/40"
+            />
+            {globalFilter && (
+              <button
+                type="button"
+                onClick={() => setGlobalFilter("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <FilterChips
+            columns={visible}
+            filters={columnFilters}
+            setFilters={(updater) => setColumnFilters(updater)}
+          />
+        </div>
+      )}
       <div className="max-h-[640px] overflow-x-auto overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur text-left text-foreground/60">
             <tr>
-              {visible.map((c) => (
-                <th
-                  key={c.id}
-                  className={`py-3 px-4 font-medium whitespace-nowrap ${
-                    c.source === "enrichment" ? "bg-accent-soft/40" : ""
-                  }`}
-                  title={
-                    c.source === "enrichment"
-                      ? `Enrichment · ${c.enrichment_id ?? ""}`
-                      : undefined
-                  }
-                >
-                  {labelFor(c)}
-                </th>
-              ))}
+              {interactive
+                ? table.getHeaderGroups()[0].headers.map((h) => {
+                    const c = (h.column.columnDef.meta as { col: UnifiedColumn }).col;
+                    const sort = h.column.getIsSorted();
+                    return (
+                      <th
+                        key={h.id}
+                        onClick={h.column.getToggleSortingHandler()}
+                        className={`py-3 px-4 font-medium whitespace-nowrap cursor-pointer select-none hover:text-foreground/80 ${
+                          c.source === "enrichment" ? "bg-accent-soft/40" : ""
+                        }`}
+                        title={
+                          c.source === "enrichment"
+                            ? `Enrichment · ${c.enrichment_id ?? ""}`
+                            : undefined
+                        }
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {labelFor(c)}
+                          <SortGlyph state={sort} />
+                        </span>
+                      </th>
+                    );
+                  })
+                : visible.map((c) => (
+                    <th
+                      key={c.id}
+                      className={`py-3 px-4 font-medium whitespace-nowrap ${
+                        c.source === "enrichment" ? "bg-accent-soft/40" : ""
+                      }`}
+                      title={
+                        c.source === "enrichment"
+                          ? `Enrichment · ${c.enrichment_id ?? ""}`
+                          : undefined
+                      }
+                    >
+                      {labelFor(c)}
+                    </th>
+                  ))}
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && (
+            {renderRows.length === 0 && (
               <tr>
                 <td
                   colSpan={Math.max(1, visible.length)}
@@ -87,7 +199,7 @@ export default function SnapshotTable({
                 </td>
               </tr>
             )}
-            {rows.map((row, idx) => (
+            {renderRows.map((row, idx) => (
               <tr
                 key={rowKey(row, idx)}
                 className="border-t border-border hover:bg-muted/30 transition-colors"
@@ -200,18 +312,6 @@ function formatPrice(currency: string, v: number): string {
   return currency ? `${currency} ${v.toFixed(2)}` : v.toFixed(2);
 }
 
-function formatSold(n: number): string {
-  if (n >= 1_000_000) {
-    const v = n / 1_000_000;
-    return `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}M sold`;
-  }
-  if (n >= 1_000) {
-    const v = n / 1_000;
-    return `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}k sold`;
-  }
-  return `${n} sold`;
-}
-
 export const overridesById: Record<string, Renderer> = {
   image_url: (v) =>
     typeof v === "string" && v ? (
@@ -272,10 +372,6 @@ export const overridesById: Record<string, Renderer> = {
     if (v == null) return <Dash />;
     return <span className="text-foreground/70 whitespace-nowrap">★ {Number(v).toFixed(1)}</span>;
   },
-  historical_sold_count: (v) => {
-    if (v == null) return <Dash />;
-    return <span className="text-foreground/70 whitespace-nowrap">{formatSold(Number(v))}</span>;
-  },
   is_sold_out: (v) =>
     v ? (
       <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground/50">
@@ -284,7 +380,19 @@ export const overridesById: Record<string, Renderer> = {
     ) : (
       <span />
     ),
-  category: (v) => (v ? <span className="text-foreground/70">{String(v)}</span> : <Dash />),
+  voucher_discount: (v, row) => {
+    if (v == null) return <Dash />;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return <Dash />;
+    // Shopee 1e5 micro-units → currency.
+    const amount = n / 100_000;
+    const currency = typeof row.currency === "string" ? row.currency : "";
+    return (
+      <span className="tabular-nums whitespace-nowrap text-foreground/80">
+        {currency ? `${currency} ${amount.toFixed(2)}` : amount.toFixed(2)}
+      </span>
+    );
+  },
   item_id: (v) => (v == null ? <Dash /> : <span className="font-mono text-xs text-muted-fg">{String(v)}</span>),
 };
 
@@ -295,9 +403,6 @@ export const overridesById: Record<string, Renderer> = {
 export function productRecordColumns(platform: "shopee" | "official_site"): UnifiedColumn[] {
   const base: UnifiedColumn[] = [
     { id: "image_url", label: "image_url", type: "str", source: "scrape", enrichment_id: null },
-    ...(platform === "official_site"
-      ? [{ id: "category", label: "category", type: "str", source: "scrape", enrichment_id: null } as UnifiedColumn]
-      : []),
     { id: "product_name", label: "product_name", type: "str", source: "scrape", enrichment_id: null },
     { id: "price", label: "price", type: "float", source: "scrape", enrichment_id: null },
     { id: "discount_pct", label: "discount_pct", type: "int", source: "scrape", enrichment_id: null },
@@ -305,9 +410,21 @@ export function productRecordColumns(platform: "shopee" | "official_site"): Unif
       ? ([
           { id: "rating_star", label: "rating_star", type: "float", source: "scrape", enrichment_id: null },
           { id: "historical_sold_count", label: "historical_sold_count", type: "int", source: "scrape", enrichment_id: null },
+          { id: "monthly_sold_count", label: "monthly_sold_count", type: "int", source: "scrape", enrichment_id: null },
         ] as UnifiedColumn[])
       : []),
     { id: "is_sold_out", label: "is_sold_out", type: "bool", source: "scrape", enrichment_id: null },
   ];
   return base;
+}
+
+function itemsLabel(interactive: boolean, filtered: number, total: number): string {
+  if (!interactive || filtered === total) return `${total} items`;
+  return `${filtered} of ${total} items`;
+}
+
+function SortGlyph({ state }: { state: false | "asc" | "desc" }) {
+  if (state === "asc") return <span className="text-foreground/70">▲</span>;
+  if (state === "desc") return <span className="text-foreground/70">▼</span>;
+  return <span className="text-foreground/20">↕</span>;
 }

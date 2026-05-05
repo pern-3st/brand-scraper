@@ -9,12 +9,14 @@ export default function AddSourceForm({
   brandId,
   sources,
   onSubmit,
+  onPrimaryUrlChange,
   initialSpec,
   submitLabel = "Add source",
 }: {
   brandId: string;
   sources: Source[];
   onSubmit: (spec: Record<string, unknown>) => void;
+  onPrimaryUrlChange?: (url: string) => void;
   initialSpec?: Record<string, unknown>;
   submitLabel?: string;
 }) {
@@ -35,7 +37,7 @@ export default function AddSourceForm({
     initialCategoriesForSection,
   );
   const [maxProducts, setMaxProducts] = useState(
-    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 10,
+    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 500,
   );
   const [skipMenuNavigation, setSkipMenuNavigation] = useState(
     typeof initialSpec?.skip_menu_navigation === "boolean"
@@ -55,7 +57,10 @@ export default function AddSourceForm({
     <div className="space-y-4">
       <BrandInput
         brandUrl={brandUrl}
-        onBrandUrlChange={setBrandUrl}
+        onBrandUrlChange={(v) => {
+          setBrandUrl(v);
+          onPrimaryUrlChange?.(v);
+        }}
       />
       <SectionCategorySelector
         brandId={brandId}

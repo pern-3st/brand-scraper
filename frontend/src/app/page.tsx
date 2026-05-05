@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Dashboard from "@/components/Dashboard";
 import BrandView from "@/components/BrandView";
 import ScrapingView from "@/components/ScrapingView";
@@ -23,9 +23,77 @@ type View =
       sessionId: string;
     };
 
+const isTransient = (s: View["screen"]) =>
+  s === "scraping" || s === "enriching";
+
+function viewToUrl(view: View): string {
+  const params = new URLSearchParams();
+  if (view.screen !== "dashboard") {
+    params.set("brand", view.brandId);
+  }
+  if (view.screen === "scraping") {
+    params.set("source", view.sourceId);
+    params.set("scrape", view.scrapeId);
+  } else if (view.screen === "run") {
+    params.set("source", view.sourceId);
+    params.set("run", view.runId);
+  } else if (view.screen === "enriching") {
+    params.set("source", view.sourceId);
+    params.set("run", view.runId);
+    params.set("session", view.sessionId);
+  }
+  const qs = params.toString();
+  return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+}
+
+function urlToView(search: string): View {
+  const p = new URLSearchParams(search);
+  const brand = p.get("brand");
+  if (!brand) return { screen: "dashboard" };
+  const source = p.get("source");
+  const run = p.get("run");
+  const scrape = p.get("scrape");
+  const session = p.get("session");
+  if (source && scrape) {
+    return { screen: "scraping", brandId: brand, sourceId: source, scrapeId: scrape };
+  }
+  if (source && run && session) {
+    return { screen: "enriching", brandId: brand, sourceId: source, runId: run, sessionId: session };
+  }
+  if (source && run) {
+    return { screen: "run", brandId: brand, sourceId: source, runId: run };
+  }
+  return { screen: "brand", brandId: brand };
+}
+
 export default function Home() {
-  const [view, setView] = useState<View>({ screen: "dashboard" });
+  const [view, setViewState] = useState<View>({ screen: "dashboard" });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  });
+
+  useEffect(() => {
+    const initial = urlToView(window.location.search);
+    if (initial.screen !== "dashboard") setViewState(initial);
+    window.history.replaceState({ view: initial }, "", viewToUrl(initial));
+    const onPop = (e: PopStateEvent) => {
+      const next = (e.state?.view as View | undefined) ?? urlToView(window.location.search);
+      setViewState(next);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const setView = (next: View) => {
+    const op =
+      isTransient(next.screen) || isTransient(viewRef.current.screen)
+        ? "replaceState"
+        : "pushState";
+    window.history[op]({ view: next }, "", viewToUrl(next));
+    setViewState(next);
+  };
 
   const crumbs: Crumb[] = (() => {
     if (view.screen === "dashboard") return [{ label: "Brand Scraper" }];
@@ -104,7 +172,11 @@ export default function Home() {
           </svg>
         </button>
       </header>
-      <div className="mx-auto max-w-5xl px-6 pb-12">
+      <div
+        className={`mx-auto px-6 pb-12 ${
+          view.screen === "run" ? "max-w-[1600px]" : "max-w-5xl"
+        }`}
+      >
         {view.screen === "dashboard" && (
           <Dashboard
             onOpenBrand={(brandId) => setView({ screen: "brand", brandId })}

@@ -17,9 +17,30 @@ export interface ProductRecord {
   item_id: number | null;
   rating_star: number | null;
   historical_sold_count: number | null;
+  monthly_sold_count: number | null;
+  monthly_sold_text: string | null;
+  category_id: string | null;
+  brand: string | null;
+  liked_count: number | null;
+  promotion_labels: string[];
+  voucher_code: string | null;
+  voucher_discount: number | null;
 
   // Official-site-only (null on shopee)
   category: string | null;
+}
+
+export interface ProductUpdate {
+  // Mirrors backend/app/models.py::ProductUpdate.
+  item_id: number;
+  monthly_sold_count: number | null;
+  monthly_sold_text: string | null;
+  category_id: string | null;
+  brand: string | null;
+  liked_count: number | null;
+  promotion_labels: string[] | null;
+  voucher_code: string | null;
+  voucher_discount: number | null;
 }
 
 export interface ScrapeStartResponse {
@@ -71,6 +92,7 @@ export interface Source {
   id: string;
   brand_id: string;
   platform: Platform;
+  name: string;
   spec: Record<string, unknown>;
   created_at: string;
 }
@@ -87,6 +109,13 @@ export interface Settings {
   openrouter_api_key_set: boolean;
   openrouter_api_key_hint: string;
   openrouter_model: string;
+}
+
+export interface ShopeeLoginStatus {
+  open: boolean;
+  profile_dir: string | null;
+  opened_at: string | null;
+  error: string | null;
 }
 
 // --- enrichment ------------------------------------------------------------
@@ -154,6 +183,22 @@ export interface EnrichmentRowEvent {
   errors: Record<string, string>;
   index: number;
   total: number;
+}
+
+export interface SavedFreeformPrompt {
+  id: string;
+  label: string;
+  prompt: string;
+  last_used_at: string;
+  use_count: number;
+}
+
+export interface EnrichmentHistory {
+  most_recent: {
+    curated_fields: string[];
+    freeform_prompts: FreeformPrompt[];
+  } | null;
+  saved_prompts: SavedFreeformPrompt[];
 }
 
 export interface EnrichmentStartedEvent {

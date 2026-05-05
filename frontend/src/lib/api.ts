@@ -3,6 +3,7 @@ import {
   BrandDetail,
   BrandSummary,
   EnrichmentFieldsResponse,
+  EnrichmentHistory,
   EnrichmentRequest,
   EnrichmentStartResponse,
   EnrichmentSummary,
@@ -11,6 +12,7 @@ import {
   RunSummary,
   ScrapeStartResponse,
   Settings,
+  ShopeeLoginStatus,
   Source,
   UnifiedTable,
 } from "@/types";
@@ -61,13 +63,14 @@ export async function getBrand(brandId: string): Promise<BrandDetail> {
 export async function createSource(
   brandId: string,
   platform: Platform,
+  name: string,
   spec: Record<string, unknown>
 ): Promise<Source> {
   return json(
     await fetch(`${API_URL}/api/brands/${brandId}/sources`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform, spec }),
+      body: JSON.stringify({ platform, name, spec }),
     })
   );
 }
@@ -75,13 +78,13 @@ export async function createSource(
 export async function updateSource(
   brandId: string,
   sourceId: string,
-  spec: Record<string, unknown>
+  patch: { name?: string; spec?: Record<string, unknown> }
 ): Promise<Source> {
   return json(
     await fetch(`${API_URL}/api/brands/${brandId}/sources/${sourceId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spec }),
+      body: JSON.stringify(patch),
     })
   );
 }
@@ -172,6 +175,17 @@ export async function getEnrichmentFields(
 ): Promise<EnrichmentFieldsResponse> {
   return json(
     await fetch(`${API_URL}/api/platforms/${platform}/enrichment_fields`)
+  );
+}
+
+export async function getEnrichmentHistory(
+  brandId: string,
+  platform: Platform
+): Promise<EnrichmentHistory> {
+  return json(
+    await fetch(
+      `${API_URL}/api/brands/${brandId}/enrichment_history?platform=${platform}`
+    )
   );
 }
 
@@ -274,5 +288,21 @@ export async function updateSettings(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     })
+  );
+}
+
+export async function getShopeeLoginStatus(): Promise<ShopeeLoginStatus> {
+  return json(await fetch(`${API_URL}/api/settings/shopee/login`));
+}
+
+export async function openShopeeLogin(): Promise<ShopeeLoginStatus> {
+  return json(
+    await fetch(`${API_URL}/api/settings/shopee/login/open`, { method: "POST" })
+  );
+}
+
+export async function closeShopeeLogin(): Promise<ShopeeLoginStatus> {
+  return json(
+    await fetch(`${API_URL}/api/settings/shopee/login/close`, { method: "POST" })
   );
 }

@@ -57,10 +57,20 @@ export default function BrandView({
         <SourceCard
           key={source.id}
           source={source}
-          latest={detail.latest_run_by_source[source.id] ?? null}
+          runs={runsBySource[source.id] ?? []}
           onStartScrape={() => onStartScrape(source.id)}
           onOpenRun={(runId) => onOpenRun(source.id, runId)}
           onEdit={() => setEditingSource(source)}
+          onDeleteRun={async (runId) => {
+            if (!confirm("Delete this run? This cannot be undone.")) return;
+            try {
+              await deleteRun(brandId, source.id, runId);
+            } catch (err) {
+              alert(`Failed to delete run: ${err instanceof Error ? err.message : String(err)}`);
+              return;
+            }
+            await reload();
+          }}
         />
       ))}
 
@@ -72,22 +82,6 @@ export default function BrandView({
           + Add source
         </button>
       )}
-
-      <HistoryList
-        sources={detail.sources}
-        runsBySource={runsBySource}
-        onOpenRun={onOpenRun}
-        onDeleteRun={async (sourceId, runId) => {
-          if (!confirm("Delete this history entry? This cannot be undone.")) return;
-          try {
-            await deleteRun(brandId, sourceId, runId);
-          } catch (err) {
-            alert(`Failed to delete run: ${err instanceof Error ? err.message : String(err)}`);
-            return;
-          }
-          await reload();
-        }}
-      />
 
       <AddSourceDrawer
         open={adding || editingSource !== null}
@@ -110,175 +104,169 @@ export default function BrandView({
 
 function SourceCard({
   source,
-  latest,
+  runs,
   onStartScrape,
   onOpenRun,
   onEdit,
+  onDeleteRun,
 }: {
   source: Source;
-  latest: RunSummary | null;
+  runs: RunSummary[];
   onStartScrape: () => void;
   onOpenRun: (runId: string) => void;
   onEdit: () => void;
+  onDeleteRun: (runId: string) => void | Promise<void>;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const latest = runs[0] ?? null;
+  const isRunning = latest?.status === "in_progress";
+  const visibleRuns = showAll ? runs : runs.slice(0, 3);
+
   return (
-    <section className="space-y-4">
-      <div className="rounded-2xl bg-card ring-1 ring-border p-6 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="text-xs text-muted-fg uppercase tracking-wider">
-            {formatPlatform(source.platform)} · {describeSpec(source)}
+    <section className="rounded-2xl bg-card ring-1 ring-border p-6 space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1 min-w-0">
+          <h2 className="text-lg font-semibold text-foreground truncate">
+            {source.name}
+          </h2>
+          <div className="text-xs text-muted-fg uppercase tracking-wider truncate">
+            {formatPlatform(source.platform)} · {primaryUrl(source)}
           </div>
-          <button
-            onClick={onEdit}
-            className="text-xs text-foreground/50 hover:text-foreground/80 uppercase tracking-wider"
-          >
-            Edit
-          </button>
         </div>
-        {latest ? (
-          <>
-            <div className="text-lg text-foreground">
-              {latest.aggregates.price_min !== null &&
-              latest.aggregates.price_max !== null
-                ? `$${latest.aggregates.price_min.toFixed(0)} – $${latest.aggregates.price_max.toFixed(0)}`
-                : "—"}
-            </div>
-            <div className="text-sm text-muted-fg">
-              {latest.aggregates.product_count} products
-              {latest.aggregates.category_count !== null &&
-                ` · ${latest.aggregates.category_count} categories`}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => onOpenRun(latest.id)}
-                className="rounded-xl bg-accent/10 text-accent px-4 py-2 text-sm hover:bg-accent/20"
-              >
-                View snapshot
-              </button>
-              <button
-                onClick={onStartScrape}
-                className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
-              >
-                Scrape again
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-muted-fg">No runs yet.</p>
+        <button
+          onClick={onEdit}
+          className="text-xs text-foreground/50 hover:text-foreground/80 uppercase tracking-wider shrink-0"
+        >
+          Edit
+        </button>
+      </div>
+
+      {configRows(source).length > 0 && (
+        <div className="border-t border-border pt-4">
+          <ConfigurationRows source={source} />
+        </div>
+      )}
+
+      {/* Recent runs */}
+      <div className="border-t border-border pt-4">
+        {runs.length === 0 ? (
+          <div className="flex justify-center">
             <button
               onClick={onStartScrape}
-              className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+              disabled={isRunning}
+              className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover disabled:opacity-40"
             >
               Scrape now
             </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider">
+                Recent runs
+              </h3>
+              <button
+                onClick={onStartScrape}
+                disabled={isRunning}
+                className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover disabled:opacity-40"
+              >
+                Scrape now
+              </button>
+            </div>
+            <ul className="divide-y divide-border">
+              {visibleRuns.map((run) => (
+                <li
+                  key={run.id}
+                  className="group flex items-center gap-4 py-2 text-sm hover:bg-foreground/[0.02]"
+                >
+                  <button
+                    onClick={() => onOpenRun(run.id)}
+                    className="flex items-center gap-4 flex-1 min-w-0 text-left"
+                  >
+                    <span className="text-foreground/80 shrink-0 w-16">
+                      {formatRunDate(run.id)}
+                    </span>
+                    <span className="text-muted-fg shrink-0 w-24">
+                      {statusLabel(run.status)}
+                    </span>
+                    <span className="text-muted-fg flex-1 truncate">
+                      {run.aggregates.product_count != null
+                        ? `${run.aggregates.product_count} products`
+                        : "—"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => onDeleteRun(run.id)}
+                    aria-label="Delete run"
+                    className="text-xs text-foreground/40 hover:text-red-500 uppercase tracking-wider shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {runs.length > 3 && !showAll && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="mt-2 text-xs text-foreground/50 hover:text-foreground/80 uppercase tracking-wider"
+              >
+                Show all ({runs.length})
+              </button>
+            )}
           </>
         )}
       </div>
-
     </section>
   );
 }
 
-function HistoryList({
-  sources,
-  runsBySource,
-  onOpenRun,
-  onDeleteRun,
-}: {
-  sources: Source[];
-  runsBySource: Record<string, RunSummary[]>;
-  onOpenRun: (sourceId: string, runId: string) => void;
-  onDeleteRun: (sourceId: string, runId: string) => void | Promise<void>;
-}) {
-  const entries = sources
-    .flatMap((source) =>
-      (runsBySource[source.id] ?? []).map((run) => ({ source, run }))
-    )
-    .sort((a, b) => (a.run.id < b.run.id ? 1 : -1));
-
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="space-y-1">
-      <h3 className="text-sm font-semibold text-foreground/50 uppercase tracking-wider px-1">
-        History
-      </h3>
-      <ul className="divide-y divide-border">
-        {entries.map(({ source, run }) => (
-          <li
-            key={`${source.id}:${run.id}`}
-            className="group flex items-center gap-4 py-3 px-1 text-sm hover:bg-foreground/[0.02]"
-          >
-            <button
-              onClick={() => onOpenRun(source.id, run.id)}
-              className="flex items-center gap-4 flex-1 min-w-0 text-left"
-            >
-              <span className="text-foreground/80 shrink-0">
-                {formatRunDate(run.id)}
-              </span>
-              <span className="text-muted-fg flex-1 truncate">
-                {formatPlatform(source.platform)}
-              </span>
-              <StatusPill run={run} />
-            </button>
-            <button
-              onClick={() => onDeleteRun(source.id, run.id)}
-              aria-label="Delete history entry"
-              className="text-xs text-foreground/40 hover:text-red-500 uppercase tracking-wider shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function StatusPill({ run }: { run: RunSummary }) {
-  const tone =
-    run.status === "ok"
-      ? "bg-emerald-100 text-emerald-800"
-      : run.status === "error"
-        ? "bg-pink-100 text-pink-800"
-        : run.status === "cancelled"
-          ? "bg-amber-100 text-amber-800"
-          : run.status === "in_progress"
-            ? "bg-sky-100 text-sky-800"
-            : "bg-muted text-muted-fg"; // unknown / legacy
-
-  const label =
-    run.status === "ok"
-      ? `OK · ${run.aggregates.product_count ?? 0} products`
-      : run.status === "in_progress"
-        ? "In progress"
-        : run.status.charAt(0).toUpperCase() + run.status.slice(1);
-
-  return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function describeSpec(s: Source): string {
-  if (s.platform === "official_site") {
-    const parts: string[] = [String(s.spec.brand_url ?? "")];
-    if (typeof s.spec.section === "string" && s.spec.section) {
-      parts.push(s.spec.section);
+function configRows(source: Source): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (source.platform === "official_site") {
+    if (typeof source.spec.section === "string") {
+      rows.push(["Section", source.spec.section]);
     }
-    if (Array.isArray(s.spec.categories) && s.spec.categories.length > 0) {
-      const cats = (s.spec.categories as unknown[]).filter(
-        (c): c is string => typeof c === "string",
-      );
-      if (cats.length > 0) parts.push(cats.join(", "));
+    if (Array.isArray(source.spec.categories)) {
+      const cats = (source.spec.categories as unknown[])
+        .filter((c): c is string => typeof c === "string");
+      if (cats.length > 0) rows.push(["Categories", cats.join(", ")]);
     }
-    return parts.join(" · ");
   }
+  return rows;
+}
+
+function ConfigurationRows({ source }: { source: Source }) {
+  const rows = configRows(source);
+  return (
+    <dl className="space-y-1 text-sm">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex gap-4">
+          <dt className="text-muted-fg w-28 shrink-0">{k}</dt>
+          <dd className="text-foreground/80 min-w-0 break-words">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "ok":
+      return "OK";
+    case "error":
+      return "Error";
+    case "cancelled":
+      return "Cancelled";
+    case "in_progress":
+      return "Running…";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
+function primaryUrl(s: Source): string {
   if (s.platform === "shopee") return String(s.spec.shop_url ?? "");
+  if (s.platform === "official_site") return String(s.spec.brand_url ?? "");
   return "";
 }
 
@@ -290,3 +278,4 @@ function formatRunDate(runId: string): string {
   );
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+

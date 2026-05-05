@@ -32,6 +32,7 @@ def seeded(repo, tmp_path):
     source = repo.add_source(
         brand_id="nike",
         platform="official_site",
+        name="Nike Official",
         spec={"brand_url": "https://nike.com", "section": "mens", "categories": ["x"], "max_products": 1},
     )
     runs_dir = tmp_path / "nike" / "sources" / source.id / "runs"

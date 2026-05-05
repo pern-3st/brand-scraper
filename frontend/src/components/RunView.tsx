@@ -180,7 +180,7 @@ export default function RunView({
       )}
 
       {!legacy && table && (
-        <SnapshotTable rows={table.rows} columns={table.columns} />
+        <SnapshotTable rows={table.rows} columns={table.columns} interactive />
       )}
 
       {logs.length > 0 && (

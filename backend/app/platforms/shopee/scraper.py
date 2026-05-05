@@ -1,27 +1,29 @@
 """ShopeeScraper: Protocol-compliant platform scraper for shopee.sg.
 
-Promoted from the 2026-04-10 spike (backend/scripts/shopee_spike.py).
 Approach:
 
 1. Open a persistent Chrome context via patchright (profile lives at
    backend/data/browser_profiles/shopee_sg; first run needs manual login
    in the opened window, subsequent runs reuse cookies).
 2. Navigate to the shop URL (page 1 is the bare URL; pages 2+ use
-   ?page=N&sortBy=pop&tab=0 — confirmed via click-URL logging in the spike).
+   ?page=N&sortBy=pop&tab=0).
 3. After each navigation, wait for GRID_CARD_SELECTOR with a 10s timeout.
-   Cards are SSR'd so they're there at domcontentloaded in practice.
-4. If page 1 times out: assume login wall. Emit `login_required` on the
-   SSE queue, await ctx.login_event or ctx.cancel_event, then retry the
-   navigation once. If it times out again, raise — the user will need to
-   inspect the open browser window.
-5. Extract per-card fields with a single page.evaluate(EXTRACT_JS) call.
-6. Dedupe against a cumulative set of item_ids. Yield each new record
-   as a ProductRecord.
-7. Terminate on: zero new item_ids after a navigation, `max_products`
+4. Extract per-card fields with a single page.evaluate(EXTRACT_JS) call.
+5. Dedupe against a cumulative set of item_ids. Yield each new record
+   as a ProductRecord with late-arriving fields left as None.
+6. Terminate on: zero new item_ids after a navigation, max_products
    reached, ctx.cancel_event set, or navigation failure.
 
-See docs/plans/2026-04-10-shopee-spike-notes.md for the full spike
-reasoning including the rejected alternatives.
+Late-arriving harvest (2026-05-05): a `page.on("response")` listener
+fills a background `harvest` dict from Shopee's `/api/v4/shop/rcmd_items`
+XHR which fires automatically on every grid nav. At end-of-stream
+(in `finally:` so cancellation doesn't lose data), one ProductUpdate
+is yielded per harvested item carrying monthly_sold + category_id +
+brand + liked_count + promotion_labels + voucher_code + voucher_discount.
+The runner mutates the matching record. Replaced the older recommend-XHR
+seed-PDP mechanism — see docs/plans/2026-05-05-shopee-rcmd-items-migration.md.
+The display-name (`category`) field is NOT populated by this path; the
+catid space here is unresolvable on shopee.sg's public API (Task 4 SKIPPED).
 """
 from __future__ import annotations
 
@@ -29,7 +31,13 @@ import logging
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
+from app.models import ProductRecord, ProductUpdate
 from app.platforms.base import ScrapeContext
+from app.platforms.shopee._rcmd_items_harvest import (
+    HarvestEntry,
+    merge_into_harvest,
+    parse_rcmd_items,
+)
 from app.platforms.shopee._session import (
     CARD_WAIT_MS,
     PROFILE_DIR,
@@ -42,7 +50,6 @@ from app.platforms.shopee.extract import (
     extract_grid_items,
     shop_handle_from_url,
 )
-from app.models import ProductRecord
 from app.platforms.shopee.models import ShopeeScrapeRequest
 
 log = logging.getLogger(__name__)
@@ -54,6 +61,11 @@ __all__ = [
     "CARD_WAIT_MS",
     "ShopeeScraper",
 ]
+
+# Endpoint we tap for late-arriving per-item metadata. Fires automatically
+# on every shop-grid navigation; no PDP visits required (replaces the
+# previous PDP-seed approach — see docs/plans/2026-05-05-shopee-rcmd-items-migration.md).
+RCMD_ITEMS_URL_FRAGMENT = "/api/v4/shop/rcmd_items"
 
 
 class ShopeeScraper:
@@ -73,64 +85,115 @@ class ShopeeScraper:
 
         cumulative: set[int] = set()
         yielded = 0
+        harvest: dict[int, HarvestEntry] = {}
+
+        async def on_response(response):
+            if RCMD_ITEMS_URL_FRAGMENT not in response.url:
+                return
+            try:
+                data = await response.json()
+            except Exception:
+                return
+            parsed = parse_rcmd_items(data)
+            added = merge_into_harvest(harvest, parsed)
+            if added:
+                covered = sum(
+                    1 for v in harvest.values() if v.monthly_text is not None
+                )
+                log.info(
+                    "shopee: rcmd_items harvested monthly for %d items "
+                    "(harvest=%d, covered=%d)",
+                    added, len(harvest), covered,
+                )
 
         async with launch_persistent_context() as (_p, context):
             page = await context.new_page()
+            page.on("response", on_response)
 
-            # --- Page 1: navigate, recover from login wall if needed ---
             ready = await navigate_with_login_wall_recovery(page, shop_url, ctx)
             if not ready:
                 return  # cancelled during login wait
 
-            # --- Paginate until exhausted or limit reached ---
-            page_idx = 1
-            while True:
-                if ctx.cancel_event.is_set():
-                    return
+            try:
+                page_idx = 1
+                while True:
+                    if ctx.cancel_event.is_set():
+                        return
 
-                items = await extract_grid_items(page)
-                new_items = [
-                    it for it in items if it.get("item_id") not in cumulative
-                ]
-                log.info(
-                    "shopee: page=%d extracted=%d new=%d cumulative=%d",
-                    page_idx, len(items), len(new_items), len(cumulative),
-                )
+                    items = await extract_grid_items(page)
+                    new_items = [
+                        it for it in items if it.get("item_id") not in cumulative
+                    ]
+                    log.info(
+                        "shopee: page=%d extracted=%d new=%d cumulative=%d",
+                        page_idx, len(items), len(new_items), len(cumulative),
+                    )
 
-                if not new_items:
-                    log.info("shopee: zero new items — catalog exhausted")
-                    return
+                    if not new_items:
+                        log.info("shopee: zero new items — catalog exhausted")
+                        return
 
-                for it in new_items:
+                    for it in new_items:
+                        if yielded >= max_products:
+                            return
+                        rec = _to_record(it)
+                        if rec is None:
+                            log.warning("shopee: dropping malformed card %s", it)
+                            continue
+                        cumulative.add(rec.item_id)
+                        yielded += 1
+                        yield rec
+
                     if yielded >= max_products:
                         return
-                    rec = _to_record(it)
-                    if rec is None:
-                        log.warning("shopee: dropping malformed card %s", it)
+
+                    page_idx += 1
+                    target = f"{shop_url}?page={page_idx}&sortBy=pop&tab=0"
+                    try:
+                        await page.goto(target, wait_until="domcontentloaded")
+                    except Exception as exc:
+                        log.info(
+                            "shopee: nav to page %d failed (%s) — stopping",
+                            page_idx, exc,
+                        )
+                        return
+                    if not await _wait_for_cards(page):
+                        log.info(
+                            "shopee: page %d has no grid cards — exhausted",
+                            page_idx,
+                        )
+                        return
+            finally:
+                # Drain harvested late-arriving fields as ProductUpdate events.
+                # Runs on clean exit, limit-reached, AND cancellation —
+                # provided the runner does NOT break the async-for loop on
+                # cancel (see runner.py:124-132 / "Cancellation contract").
+                # Only emit for items we actually yielded (cumulative set).
+                # `category` (display name) is intentionally NOT set —
+                # see docs/plans/2026-05-05-shopee-rcmd-items-migration.md
+                # Task 4 (SKIPPED).
+                update_count = 0
+                for iid in cumulative:
+                    h = harvest.get(iid)
+                    if not h:
                         continue
-                    cumulative.add(rec.item_id)
-                    yielded += 1
-                    yield rec
-
-                if yielded >= max_products:
-                    return
-
-                page_idx += 1
-                target = f"{shop_url}?page={page_idx}&sortBy=pop&tab=0"
-                try:
-                    await page.goto(target, wait_until="domcontentloaded")
-                except Exception as exc:
-                    log.info(
-                        "shopee: nav to page %d failed (%s) — stopping",
-                        page_idx, exc,
+                    yield ProductUpdate(
+                        item_id=iid,
+                        monthly_sold_count=h.monthly_int,
+                        monthly_sold_text=h.monthly_text,
+                        category_id=str(h.catid) if h.catid is not None else None,
+                        brand=h.brand,
+                        liked_count=h.liked_count,
+                        promotion_labels=h.promotion_labels or None,
+                        voucher_code=h.voucher_code,
+                        voucher_discount=h.voucher_discount,
                     )
-                    return
-                if not await _wait_for_cards(page):
-                    log.info(
-                        "shopee: page %d has no grid cards — catalog exhausted",
-                        page_idx,
-                    )
-                    return
+                    update_count += 1
+                log.info(
+                    "shopee: emitted %d ProductUpdate events "
+                    "(harvest=%d, grid_items=%d)",
+                    update_count, len(harvest), len(cumulative),
+                )
 
 
 def _to_record(item: dict) -> ProductRecord | None:

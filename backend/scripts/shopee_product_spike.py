@@ -87,16 +87,26 @@ async def capture_one(context, url: str, out_dir: Path, index: int) -> dict:
             headers_file = xhr_dir / f"{stem}.headers.json"
             try:
                 req = response.request
+                # Capture POST body if any. Try JSON parse for readability;
+                # fall back to raw string. post_data is None for GETs.
+                post_data_raw = req.post_data
+                post_data_parsed: object = None
+                if post_data_raw:
+                    try:
+                        post_data_parsed = json.loads(post_data_raw)
+                    except Exception:
+                        post_data_parsed = post_data_raw
                 headers_obj = {
                     "url": resp_url,
                     "status": status,
                     "method": req.method,
                     "request_headers": await req.all_headers(),
+                    "request_post_data": post_data_parsed,
                     "response_headers": await response.all_headers(),
                 }
             except Exception as exc:
                 headers_obj = {"url": resp_url, "status": status, "error": repr(exc)}
-            headers_file.write_text(json.dumps(headers_obj, indent=2))
+            headers_file.write_text(json.dumps(headers_obj, indent=2, ensure_ascii=False))
 
             # Body — pretty-print if JSON, else raw bytes
             body_file = xhr_dir / f"{stem}.json"

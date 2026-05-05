@@ -5,10 +5,12 @@ import ShopeeBrandInput from "./BrandInput";
 
 export default function AddSourceForm({
   onSubmit,
+  onPrimaryUrlChange,
   initialSpec,
   submitLabel = "Add source",
 }: {
   onSubmit: (spec: Record<string, unknown>) => void;
+  onPrimaryUrlChange?: (url: string) => void;
   initialSpec?: Record<string, unknown>;
   submitLabel?: string;
 }) {
@@ -16,7 +18,7 @@ export default function AddSourceForm({
     typeof initialSpec?.shop_url === "string" ? initialSpec.shop_url : "",
   );
   const [maxProducts, setMaxProducts] = useState(
-    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 50,
+    typeof initialSpec?.max_products === "number" ? initialSpec.max_products : 500,
   );
   const canSubmit = shopUrl.trim() !== "";
   return (
@@ -24,7 +26,10 @@ export default function AddSourceForm({
       <ShopeeBrandInput
         shopUrl={shopUrl}
         maxProducts={maxProducts}
-        onShopUrlChange={setShopUrl}
+        onShopUrlChange={(v) => {
+          setShopUrl(v);
+          onPrimaryUrlChange?.(v);
+        }}
         onMaxProductsChange={setMaxProducts}
       />
       <button

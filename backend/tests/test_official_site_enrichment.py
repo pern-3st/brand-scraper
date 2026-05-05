@@ -105,30 +105,44 @@ def test_build_schema_model_rejects_collision():
 
 @pytest.fixture
 def mocked_browser(monkeypatch):
-    """Stub BrowserSession + extract_structured + build_llm so tests run without
-    a real browser / network."""
+    """Stub launch_persistent_context + extract_structured_from_page +
+    build_llm so tests run without launching Chrome or hitting an LLM."""
+    from contextlib import asynccontextmanager
+
     calls: dict[str, Any] = {"navigations": [], "extracts": []}
 
-    class StubBrowser:
-        def __init__(self, *_a, **_kw): pass
-        async def start(self) -> None:
-            pass
-        async def navigate_to(self, url: str) -> None:
+    class _StubPage:
+        async def goto(self, url, **_kw):
             calls["navigations"].append(url)
-        async def stop(self) -> None:
-            pass
-        def get_current_page(self):  # unused but keeps parity with real BrowserSession
-            return None
+        async def evaluate(self, *_a, **_kw):
+            return ""
 
-    monkeypatch.setattr(ose, "BrowserSession", StubBrowser)
+    class _StubContext:
+        async def new_page(self):
+            return _StubPage()
+        async def close(self):
+            pass
+
+    @asynccontextmanager
+    async def _fake_launch():
+        yield None, _StubContext()
+
+    monkeypatch.setattr(ose, "launch_persistent_context", _fake_launch)
     monkeypatch.setattr(ose, "build_llm", lambda: object())
 
-    # Skip the 8-20s jitter sleep between products so tests stay fast. The
-    # dedicated pacing test re-monkeypatches this to record the call args.
+    # Skip the 8-20s jitter sleep between products + the post-goto settle
+    # so tests stay fast. The dedicated pacing test re-monkeypatches this
+    # to record the call args.
     async def _fast_pace_sleep(seconds: float, cancel_event):
         return cancel_event.is_set()
 
     monkeypatch.setattr(ose, "_pace_sleep", _fast_pace_sleep)
+
+    # Skip the warmup idle so existing tests don't have to model it.
+    async def _fast_warmup_idle(_page, cancel_event):
+        return cancel_event.is_set()
+
+    monkeypatch.setattr(ose, "_warmup_idle", _fast_warmup_idle)
     return calls
 
 
@@ -157,11 +171,11 @@ async def _drain(ext, records, req):
 
 
 def test_stream_enrichments_fills_curated_and_freeform(mocked_browser, monkeypatch):
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         # Return a schema instance with both curated (description) and freeform (is_vegan).
         return schema(description="A soft tee", is_vegan="Yes")
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     req = EnrichmentRequest(
         curated_fields=["description"],
@@ -177,19 +191,25 @@ def test_stream_enrichments_fills_curated_and_freeform(mocked_browser, monkeypat
         assert r.values["description"] == "A soft tee"
         assert r.values["is_vegan"] == "Yes"
         assert r.errors == {}
-    assert mocked_browser["navigations"] == ["https://brand.com/a", "https://brand.com/b"]
+    # First navigation is the warmup URL (brand homepage); the next two are
+    # the product URLs in order.
+    assert mocked_browser["navigations"] == [
+        "https://brand.com/",
+        "https://brand.com/a",
+        "https://brand.com/b",
+    ]
 
 
 def test_stream_enrichments_records_per_product_failures(mocked_browser, monkeypatch):
     counter = {"n": 0}
 
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         counter["n"] += 1
         if counter["n"] == 2:
             raise RuntimeError("simulated extract failure")
         return schema(description="ok")
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     req = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
     records = [_rec(f"https://brand.com/p{i}") for i in range(3)]
@@ -203,10 +223,10 @@ def test_stream_enrichments_records_per_product_failures(mocked_browser, monkeyp
 
 
 def test_stream_enrichments_skips_records_without_url(mocked_browser, monkeypatch):
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         return schema(description="ok")
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     req = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
     records = [_rec(None), _rec("https://brand.com/valid")]
@@ -218,10 +238,10 @@ def test_stream_enrichments_skips_records_without_url(mocked_browser, monkeypatc
 
 
 def test_stream_enrichments_records_extract_returning_none(mocked_browser, monkeypatch):
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         return None  # extract_structured hard-failed
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     req = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
     rows = asyncio.run(_drain(ose.OfficialSiteEnrichment(), [_rec("https://brand.com/a")], req))
@@ -231,10 +251,10 @@ def test_stream_enrichments_records_extract_returning_none(mocked_browser, monke
 
 
 def test_stream_enrichments_honours_cancel(mocked_browser, monkeypatch):
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         return schema(description="ok")
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     req = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
     records = [_rec(f"https://brand.com/p{i}") for i in range(3)]
@@ -291,10 +311,10 @@ async def test_pace_sleep_returns_true_when_cancelled():
 async def test_stream_enrichments_paces_between_products(mocked_browser, monkeypatch):
     """Sleep between processed products only (not before the first, not at all
     for product_key=None records)."""
-    async def fake_extract(*, browser, llm, schema, query, **kw):
+    async def fake_extract(page, *, llm, schema, query):
         return schema(description="ok")
 
-    monkeypatch.setattr(ose, "extract_structured", fake_extract)
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
 
     pace_calls: list[float] = []
 
@@ -312,10 +332,20 @@ async def test_stream_enrichments_paces_between_products(mocked_browser, monkeyp
     rows = await _drain(ose.OfficialSiteEnrichment(), records, req)
 
     assert len(rows) == 4  # 4 processed; the None-URL record is silently skipped
-    # 3 sleeps between 4 processed products; the no-URL record contributes none.
-    assert len(pace_calls) == 3
-    for delay in pace_calls:
-        assert ose._PACE_MIN_SECONDS <= delay <= ose._PACE_MAX_SECONDS
+    # Inter-product sleeps fall in the [_PACE_MIN, _PACE_MAX] window; the
+    # post-goto settle sleeps fall in [_POST_GOTO_SETTLE_MIN, _POST_GOTO_SETTLE_MAX].
+    # Filter to inter-product pacing — there should be 3 of those (between 4
+    # processed products), and 4 settle sleeps.
+    inter_product_calls = [
+        d for d in pace_calls
+        if ose._PACE_MIN_SECONDS <= d <= ose._PACE_MAX_SECONDS
+    ]
+    settle_calls = [
+        d for d in pace_calls
+        if ose._POST_GOTO_SETTLE_MIN_SECONDS <= d <= ose._POST_GOTO_SETTLE_MAX_SECONDS
+    ]
+    assert len(inter_product_calls) == 3
+    assert len(settle_calls) == 4
 
 
 # --- build_browser_profile (persistent user_data_dir) ----------------------
@@ -340,6 +370,261 @@ def test_build_browser_profile_reuses_same_dir_across_calls(tmp_path, monkeypatc
     p1 = _browser_use.build_browser_profile()
     p2 = _browser_use.build_browser_profile()
     assert p1.user_data_dir == p2.user_data_dir
+
+
+# --- Warmup URL derivation -------------------------------------------------
+
+
+def test_derive_warmup_url_with_locale_segment():
+    from app.platforms.official_site_enrichment import _derive_warmup_url
+    assert _derive_warmup_url(
+        "https://www2.hm.com/en_sg/productpage.1209140021.html"
+    ) == "https://www2.hm.com/en_sg/"
+
+
+def test_derive_warmup_url_without_locale_segment():
+    from app.platforms.official_site_enrichment import _derive_warmup_url
+    assert _derive_warmup_url("https://acme.test/p/123") == "https://acme.test/"
+
+
+def test_derive_warmup_url_returns_none_for_garbage():
+    from app.platforms.official_site_enrichment import _derive_warmup_url
+    assert _derive_warmup_url("not a url") is None
+    assert _derive_warmup_url("") is None
+    assert _derive_warmup_url(None) is None
+
+
+# --- Patchright session integration ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_enrichments_uses_patchright_session(monkeypatch):
+    """Wires through patchright's launch_persistent_context and the new
+    LLM-extract helper, yielding EnrichmentRow per processed product."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+
+    visited_urls: list[str] = []
+
+    class _FakePage:
+        async def goto(self, url, **kwargs):
+            visited_urls.append(url)
+        async def evaluate(self, *args, **kwargs):
+            return None
+
+    class _FakeContext:
+        async def new_page(self):
+            return _FakePage()
+        async def close(self):
+            pass
+
+    @asynccontextmanager
+    async def fake_launch():
+        yield None, _FakeContext()
+
+    monkeypatch.setattr(ose, "launch_persistent_context", fake_launch)
+    async def fake_extract(page, *, llm, schema, query):
+        return schema(description="x")
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
+    monkeypatch.setattr(ose, "build_llm", lambda: object())
+    async def fake_pace(seconds, evt):
+        return False
+    monkeypatch.setattr(ose, "_pace_sleep", fake_pace)
+
+    records = [
+        ProductRecord(
+            product_name=f"P{i}",
+            product_url=f"https://acme.test/p/{i}",
+            scraped_at=datetime.now(timezone.utc),
+        )
+        for i in range(3)
+    ]
+    request = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
+    ctx = ScrapeContext(
+        cancel_event=asyncio.Event(),
+        login_event=asyncio.Event(),
+        queue=asyncio.Queue(),
+    )
+
+    extractor = ose.OfficialSiteEnrichment()
+    rows = [r async for r in extractor.stream_enrichments(records, request, ctx)]
+
+    assert len(rows) == 3
+    assert all(r.values == {"description": "x"} for r in rows)
+    assert visited_urls[-3:] == [
+        "https://acme.test/p/0",
+        "https://acme.test/p/1",
+        "https://acme.test/p/2",
+    ]
+
+
+# --- Warmup integration ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_enrichments_warms_up_before_first_product(monkeypatch):
+    """The first navigation should hit the derived warmup URL, not the
+    first product URL."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+
+    nav_log: list[str] = []
+
+    class _FakePage:
+        async def goto(self, url, **kwargs):
+            nav_log.append(url)
+        async def evaluate(self, *args, **kwargs):
+            return ""
+        mouse = type("M", (), {"wheel": staticmethod(lambda *a, **k: _noop())})()
+
+    async def _noop():
+        return None
+
+    class _FakeContext:
+        async def new_page(self):
+            return _FakePage()
+        async def close(self):
+            pass
+
+    @asynccontextmanager
+    async def fake_launch():
+        yield None, _FakeContext()
+
+    monkeypatch.setattr(ose, "launch_persistent_context", fake_launch)
+    async def fake_extract(page, *, llm, schema, query):
+        return schema(description="x")
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
+    monkeypatch.setattr(ose, "build_llm", lambda: object())
+    async def fake_pace(seconds, evt):
+        return False
+    monkeypatch.setattr(ose, "_pace_sleep", fake_pace)
+    async def fake_warmup_idle(page, evt):
+        return False
+    monkeypatch.setattr(ose, "_warmup_idle", fake_warmup_idle)
+
+    records = [
+        ProductRecord(
+            product_name="P1",
+            product_url="https://www2.hm.com/en_sg/productpage.1209140021.html",
+            scraped_at=datetime.now(timezone.utc),
+        ),
+    ]
+    request = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
+    ctx = ScrapeContext(
+        cancel_event=asyncio.Event(),
+        login_event=asyncio.Event(),
+        queue=asyncio.Queue(),
+    )
+
+    extractor = ose.OfficialSiteEnrichment()
+    [_ async for _ in extractor.stream_enrichments(records, request, ctx)]
+
+    assert nav_log[0] == "https://www2.hm.com/en_sg/"
+    assert nav_log[1] == "https://www2.hm.com/en_sg/productpage.1209140021.html"
+
+
+# --- Block detection -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "snippet,expected",
+    [
+        ("Access Denied\n\nYou don't have permission to access ...", True),
+        ("Some normal page\nReference #18.a4a4c117.1777875665", True),
+        ("Reference page about edgesuite.net domain", True),
+        ("Product Title\n\nA cosy sweater in soft cotton.", False),
+        ("", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_looks_like_block_string_markers(snippet, expected):
+    from app.platforms.official_site_enrichment import _looks_like_block
+
+    class _Page:
+        async def evaluate(self, _):
+            return snippet
+
+    assert await _looks_like_block(_Page()) is expected
+
+
+@pytest.mark.asyncio
+async def test_looks_like_block_returns_false_when_evaluate_errors():
+    """A failing evaluate (e.g. page detached during read) must NOT be
+    treated as a block — the cost of a false positive is aborting an entire
+    enrichment pass over a transient frame race."""
+    from app.platforms.official_site_enrichment import _looks_like_block
+
+    class _Page:
+        async def evaluate(self, _):
+            raise RuntimeError("page is detached")
+
+    assert await _looks_like_block(_Page()) is False
+
+
+@pytest.mark.asyncio
+async def test_stream_enrichments_aborts_on_akamai_block(monkeypatch):
+    """When a navigated page looks blocked, yield one error row and stop —
+    don't continue hammering subsequent products."""
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+
+    class _FakePage:
+        def __init__(self):
+            self._last = ""
+        async def goto(self, url, **kwargs):
+            self._last = url
+        async def evaluate(self, _):
+            # Block on the second product's nav.
+            if "/p/2" in self._last:
+                return "Access Denied\nReference #..."
+            return "ok"
+
+    class _FakeContext:
+        async def new_page(self):
+            return _FakePage()
+        async def close(self):
+            pass
+
+    @asynccontextmanager
+    async def fake_launch():
+        yield None, _FakeContext()
+
+    monkeypatch.setattr(ose, "launch_persistent_context", fake_launch)
+    async def fake_extract(page, *, llm, schema, query):
+        return schema(description="x")
+    monkeypatch.setattr(ose, "extract_structured_from_page", fake_extract)
+    monkeypatch.setattr(ose, "build_llm", lambda: object())
+    async def fake_pace(seconds, evt):
+        return False
+    monkeypatch.setattr(ose, "_pace_sleep", fake_pace)
+    async def fake_warmup_idle(page, evt):
+        return False
+    monkeypatch.setattr(ose, "_warmup_idle", fake_warmup_idle)
+    # Skip warmup-URL nav by stubbing _derive_warmup_url to return None.
+    monkeypatch.setattr(ose, "_derive_warmup_url", lambda _: None)
+
+    records = [
+        ProductRecord(
+            product_name=f"P{i}",
+            product_url=f"https://acme.test/p/{i}",
+            scraped_at=datetime.now(timezone.utc),
+        )
+        for i in range(1, 5)  # /p/1 .. /p/4
+    ]
+    request = EnrichmentRequest(curated_fields=["description"], freeform_prompts=[])
+    ctx = ScrapeContext(
+        cancel_event=asyncio.Event(),
+        login_event=asyncio.Event(),
+        queue=asyncio.Queue(),
+    )
+
+    extractor = ose.OfficialSiteEnrichment()
+    rows = [r async for r in extractor.stream_enrichments(records, request, ctx)]
+
+    assert len(rows) == 2
+    assert rows[0].values == {"description": "x"}
+    assert rows[1].errors == {"_all": "akamai_block"}
+    assert rows[1].values == {}
 
 
 # --- Registry ---------------------------------------------------------------

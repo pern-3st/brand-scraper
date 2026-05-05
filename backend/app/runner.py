@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator, Callable
 from pydantic import BaseModel, TypeAdapter
 
 from app.brands import BrandRepo, compute_run_aggregates, new_enrichment_id
-from app.models import EnrichmentRequest, EnrichmentRow, ProductRecord, ScrapeRequest
+from app.models import EnrichmentRequest, EnrichmentRow, ProductRecord, ProductUpdate, ScrapeRequest
 from app.platforms.base import (
     EnrichmentExtractor,
     ProductIdentity,
@@ -121,16 +121,55 @@ async def _run_job(
         try:
             async for item in stream:
                 if session.cancel_event.is_set():
+                    # Mark the run as cancelled but DO NOT break. The Shopee
+                    # scraper's stream_products yields harvested ProductUpdate
+                    # values from its `finally:` block — yielding inside finally
+                    # raises RuntimeError("async generator ignored GeneratorExit")
+                    # if the consumer breaks first. Letting the loop drain lets
+                    # the scraper's own ctx.cancel_event check at the top of its
+                    # grid loop short-circuit naturally, run finally cleanly,
+                    # and deliver any harvested updates before the generator
+                    # ends. See plan header "Cancellation contract".
                     status = "cancelled"
-                    break
+                if isinstance(item, ProductUpdate):
+                    target = next(
+                        (r for r in records if r.item_id == item.item_id),
+                        None,
+                    )
+                    if target is None:
+                        log.warning(
+                            "runner: ProductUpdate for unknown item_id=%s — dropped",
+                            item.item_id,
+                        )
+                        continue
+                    if item.monthly_sold_count is not None:
+                        target.monthly_sold_count = item.monthly_sold_count
+                    if item.monthly_sold_text is not None:
+                        target.monthly_sold_text = item.monthly_sold_text
+                    if item.category_id is not None:
+                        target.category_id = item.category_id
+                    if item.brand is not None:
+                        target.brand = item.brand
+                    if item.liked_count is not None:
+                        target.liked_count = item.liked_count
+                    if item.promotion_labels is not None:
+                        target.promotion_labels = item.promotion_labels
+                    if item.voucher_code is not None:
+                        target.voucher_code = item.voucher_code
+                    if item.voucher_discount is not None:
+                        target.voucher_discount = item.voucher_discount
+                    flush("in_progress")
+                    session.queue.put_nowait({
+                        "event": "product_update",
+                        "data": json.dumps(item.model_dump(mode="json")),
+                    })
+                    continue
                 records.append(item)
                 flush("in_progress")
                 session.queue.put_nowait({
                     "event": sse_event_name,
                     "data": json.dumps(event_payload(item, len(records))),
                 })
-            else:
-                status = "ok"
 
             meta["aggregates"] = compute_aggregates(records)
 

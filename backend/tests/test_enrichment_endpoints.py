@@ -49,6 +49,7 @@ def seeded(client, tmp_repo):
         f"/api/brands/{brand['id']}/sources",
         json={
             "platform": "official_site",
+            "name": "EnrichCo Official",
             "spec": {
                 "brand_url": "https://enrichco.test",
                 "section": "mens",
@@ -194,7 +195,7 @@ def test_post_enrichment_rejects_freeform_on_shopee(client, tmp_repo):
     brand = client.post("/api/brands", json={"name": "ShopeeCo"}).json()
     src = client.post(
         f"/api/brands/{brand['id']}/sources",
-        json={"platform": "shopee", "spec": {"shop_url": "https://shopee.sg/x", "max_products": 1}},
+        json={"platform": "shopee", "name": "Shopee X", "spec": {"shop_url": "https://shopee.sg/x", "max_products": 1}},
     ).json()
     run_id = "20260424T110000Z"
     runs_dir = tmp_repo._runs_dir(brand["id"], src["id"])

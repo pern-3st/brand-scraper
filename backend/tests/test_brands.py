@@ -67,6 +67,7 @@ def test_add_source_returns_generated_id(repo):
     source = repo.add_source(
         brand_id="nike",
         platform="official_site",
+        name="Nike Official",
         spec={"brand_url": "https://nike.com/sg", "section": "mens", "categories": ["shoes"], "max_products": 10},
     )
     assert source.id  # non-empty
@@ -77,8 +78,8 @@ def test_add_source_returns_generated_id(repo):
 
 def test_list_sources_for_brand(repo):
     repo.create_brand(name="Nike")
-    s1 = repo.add_source(brand_id="nike", platform="official_site", spec={"brand_url": "https://nike.com/sg", "section": "mens", "categories": ["shoes"], "max_products": 10})
-    s2 = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "https://shopee.sg/nike", "max_products": 50})
+    s1 = repo.add_source(brand_id="nike", platform="official_site", name="Nike Official", spec={"brand_url": "https://nike.com/sg", "section": "mens", "categories": ["shoes"], "max_products": 10})
+    s2 = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "https://shopee.sg/nike", "max_products": 50})
     ids = {s.id for s in repo.list_sources("nike")}
     assert ids == {s1.id, s2.id}
 
@@ -90,15 +91,15 @@ def test_get_source_returns_none_if_missing(repo):
 
 def test_update_source_spec_overwrites(repo):
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "https://shopee.sg/nike", "max_products": 50})
-    repo.update_source_spec("nike", s.id, spec={"shop_url": "https://shopee.sg/nike", "max_products": 100})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "https://shopee.sg/nike", "max_products": 50})
+    repo.update_source("nike", s.id, spec={"shop_url": "https://shopee.sg/nike", "max_products": 100})
     assert repo.get_source("nike", s.id).spec["max_products"] == 100
 
 
 def test_update_source_missing_raises(repo):
     repo.create_brand(name="Nike")
     with pytest.raises(SourceNotFound):
-        repo.update_source_spec("nike", "nope", spec={})
+        repo.update_source("nike", "nope", spec={})
 
 
 from app.brands import compute_run_aggregates
@@ -150,7 +151,7 @@ def test_aggregates_empty():
 def test_list_runs_includes_partial(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     (runs_dir / "20260401T000000Z.json").write_text(_json.dumps({
         "_status": "ok",
@@ -186,7 +187,7 @@ def test_list_runs_partial_without_final_version_wins(repo, tmp_path):
     but be defensive), prefer the final one."""
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     (runs_dir / "20260501T000000Z.json").write_text(_json.dumps({
         "_status": "ok", "_meta": {"aggregates": {}}, "records": [],
@@ -202,7 +203,7 @@ def test_list_runs_partial_without_final_version_wins(repo, tmp_path):
 def test_get_run_payload_falls_back_to_partial(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     payload = {"_status": "error", "_meta": {"error": "boom"}, "records": []}
     (runs_dir / "20260422T100000Z.partial.json").write_text(_json.dumps(payload))
@@ -212,7 +213,7 @@ def test_get_run_payload_falls_back_to_partial(repo, tmp_path):
 def test_delete_run_removes_log_file(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     (runs_dir / "20260422T110000Z.json").write_text(_json.dumps({"_status": "ok", "_meta": {}, "records": []}))
     (runs_dir / "20260422T110000Z.log.jsonl").write_text('{"message":"x","level":"info"}\n')
@@ -225,7 +226,7 @@ def test_delete_run_removes_log_file(repo, tmp_path):
 def test_delete_run_removes_partial(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     (runs_dir / "20260422T120000Z.partial.json").write_text(_json.dumps({"_status": "error", "_meta": {}, "records": []}))
     assert repo.delete_run("nike", s.id, "20260422T120000Z") is True
@@ -235,7 +236,7 @@ def test_delete_run_removes_partial(repo, tmp_path):
 def test_get_run_payload(repo, tmp_path):
     import json as _json
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     runs_dir = tmp_path / "nike" / "sources" / s.id / "runs"
     payload = {"_status": "ok", "_meta": {"aggregates": {"product_count": 1}}, "records": [{"item_id": 1}]}
     (runs_dir / "20260401T000000Z.json").write_text(_json.dumps(payload))
@@ -245,7 +246,7 @@ def test_get_run_payload(repo, tmp_path):
 
 def test_log_path_creates_runs_dir(repo):
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     p = repo.log_path("nike", s.id, "20260422T000000Z")
     assert p.name == "20260422T000000Z.log.jsonl"
     assert p.parent.name == "runs"
@@ -254,7 +255,7 @@ def test_log_path_creates_runs_dir(repo):
 
 def test_get_run_logs_reads_jsonl(repo, tmp_path):
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     log_file = tmp_path / "nike" / "sources" / s.id / "runs" / "20260422T000000Z.log.jsonl"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text(
@@ -270,14 +271,14 @@ def test_get_run_logs_reads_jsonl(repo, tmp_path):
 
 def test_get_run_logs_missing_returns_empty(repo):
     repo.create_brand(name="Nike")
-    s = repo.add_source(brand_id="nike", platform="shopee", spec={"shop_url": "x", "max_products": 1})
+    s = repo.add_source(brand_id="nike", platform="shopee", name="Nike Shopee", spec={"shop_url": "x", "max_products": 1})
     assert repo.get_run_logs("nike", s.id, "does-not-exist") == []
 
 
 def test_enriched_field_map_aggregates_across_passes(repo):
     brand = repo.create_brand(name="Acme")
     source = repo.add_source(
-        brand_id=brand.id, platform="official_site", spec={"brand_url": "https://acme.test"}
+        brand_id=brand.id, platform="official_site", name="Acme Official", spec={"brand_url": "https://acme.test"}
     )
     run_id = "20260504T000000Z"
     edir = repo._enrichments_dir(brand.id, source.id, run_id)
@@ -309,6 +310,148 @@ def test_enriched_field_map_aggregates_across_passes(repo):
 def test_enriched_field_map_returns_empty_when_no_runs(repo):
     brand = repo.create_brand(name="Acme")
     source = repo.add_source(
-        brand_id=brand.id, platform="official_site", spec={"brand_url": "https://acme.test"}
+        brand_id=brand.id, platform="official_site", name="Acme Official", spec={"brand_url": "https://acme.test"}
     )
     assert repo.enriched_field_map(brand.id, source.id, "nonexistent_run") == {}
+
+
+def test_add_source_persists_name(repo):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(
+        brand_id="nike",
+        platform="shopee",
+        name="Shopee SG",
+        spec={"shop_url": "https://shopee.sg/nike", "max_products": 50},
+    )
+    assert s.name == "Shopee SG"
+    reloaded = repo.get_source("nike", s.id)
+    assert reloaded.name == "Shopee SG"
+
+
+def test_update_source_can_change_name(repo):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(
+        brand_id="nike", platform="shopee", name="Shopee SG",
+        spec={"shop_url": "https://shopee.sg/nike", "max_products": 50},
+    )
+    repo.update_source(
+        "nike", s.id, name="Shopee Singapore", spec=s.spec,
+    )
+    assert repo.get_source("nike", s.id).name == "Shopee Singapore"
+
+
+def test_create_source_endpoint_requires_name(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main, runner
+
+    repo = BrandRepo(root=tmp_path)
+    repo.create_brand(name="Nike")
+    monkeypatch.setattr(runner, "_repo", repo)
+
+    client = TestClient(main.app)
+    resp = client.post(
+        "/api/brands/nike/sources",
+        json={
+            "platform": "shopee",
+            "spec": {"shop_url": "https://shopee.sg/nike", "max_products": 50},
+        },
+    )
+    assert resp.status_code == 422
+
+    resp = client.post(
+        "/api/brands/nike/sources",
+        json={
+            "platform": "shopee",
+            "name": "Shopee SG",
+            "spec": {"shop_url": "https://shopee.sg/nike", "max_products": 50},
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "Shopee SG"
+
+
+def test_update_source_endpoint_can_change_name(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main, runner
+
+    repo = BrandRepo(root=tmp_path)
+    repo.create_brand(name="Nike")
+    s = repo.add_source(
+        brand_id="nike", platform="shopee", name="Shopee SG",
+        spec={"shop_url": "https://shopee.sg/nike", "max_products": 50},
+    )
+    monkeypatch.setattr(runner, "_repo", repo)
+
+    client = TestClient(main.app)
+    resp = client.patch(
+        f"/api/brands/nike/sources/{s.id}",
+        json={"name": "Shopee Singapore"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "Shopee Singapore"
+    assert repo.get_source("nike", s.id).name == "Shopee Singapore"
+    assert repo.get_source("nike", s.id).spec["shop_url"] == "https://shopee.sg/nike"
+
+
+def test_backfill_fills_missing_name_from_shop_url(tmp_path):
+    brand_dir = tmp_path / "nike"
+    (brand_dir / "sources" / "abc12345" / "runs").mkdir(parents=True)
+    (brand_dir / "brand.json").write_text(json.dumps({
+        "id": "nike", "name": "Nike", "created_at": "2026-01-01T00:00:00Z",
+    }))
+    (brand_dir / "sources" / "abc12345" / "source.json").write_text(json.dumps({
+        "id": "abc12345",
+        "brand_id": "nike",
+        "platform": "shopee",
+        "spec": {"shop_url": "https://shopee.sg/nike", "max_products": 50},
+        "created_at": "2026-01-01T00:00:00Z",
+    }))
+
+    repo = BrandRepo(root=tmp_path)
+    s = repo.get_source("nike", "abc12345")
+    assert s.name == "https://shopee.sg/nike"
+
+
+def test_backfill_fills_missing_name_from_brand_url(tmp_path):
+    brand_dir = tmp_path / "nike"
+    (brand_dir / "sources" / "def67890" / "runs").mkdir(parents=True)
+    (brand_dir / "brand.json").write_text(json.dumps({
+        "id": "nike", "name": "Nike", "created_at": "2026-01-01T00:00:00Z",
+    }))
+    (brand_dir / "sources" / "def67890" / "source.json").write_text(json.dumps({
+        "id": "def67890",
+        "brand_id": "nike",
+        "platform": "official_site",
+        "spec": {
+            "brand_url": "https://nike.com/sg",
+            "section": "mens",
+            "categories": ["shoes"],
+            "max_products": 10,
+        },
+        "created_at": "2026-01-01T00:00:00Z",
+    }))
+
+    repo = BrandRepo(root=tmp_path)
+    assert repo.get_source("nike", "def67890").name == "https://nike.com/sg"
+
+
+def test_backfill_is_idempotent(tmp_path):
+    repo = BrandRepo(root=tmp_path)
+    repo.create_brand(name="Nike")
+    s = repo.add_source(
+        brand_id="nike", platform="shopee", name="Shopee SG",
+        spec={"shop_url": "x", "max_products": 1},
+    )
+    repo2 = BrandRepo(root=tmp_path)
+    assert repo2.get_source("nike", s.id).name == "Shopee SG"
+
+
+def test_update_source_leaves_name_when_omitted(repo):
+    repo.create_brand(name="Nike")
+    s = repo.add_source(
+        brand_id="nike", platform="shopee", name="Shopee SG",
+        spec={"shop_url": "https://shopee.sg/nike", "max_products": 50},
+    )
+    repo.update_source("nike", s.id, spec={"shop_url": "x", "max_products": 1})
+    assert repo.get_source("nike", s.id).name == "Shopee SG"

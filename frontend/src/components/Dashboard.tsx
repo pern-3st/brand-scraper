@@ -90,6 +90,7 @@ export default function Dashboard({
               e.preventDefault();
               setMenu({ brandId: b.id, x: e.clientX, y: e.clientY });
             }}
+            onDelete={() => setPendingDelete(b)}
           />
         ))}
         <button
@@ -139,10 +140,12 @@ function BrandTile({
   brand,
   onClick,
   onContextMenu,
+  onDelete,
 }: {
   brand: BrandSummary;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onDelete: () => void;
 }) {
   const r = brand.latest_run;
   const noData = !r || brand.source_count === 0;
@@ -150,8 +153,28 @@ function BrandTile({
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className="cursor-pointer rounded-3xl bg-card ring-1 ring-border p-10 text-left hover:ring-accent/40 transition-colors space-y-6 min-h-56"
+      className="group relative cursor-pointer rounded-3xl bg-card ring-1 ring-border p-10 text-left hover:ring-accent/40 transition-colors space-y-6 min-h-56"
     >
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(ev) => {
+          ev.stopPropagation();
+          onDelete();
+        }}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.stopPropagation();
+            ev.preventDefault();
+            onDelete();
+          }
+        }}
+        className="absolute top-4 right-5 text-2xl leading-none text-foreground/30 hover:text-danger-fg opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 cursor-pointer"
+        aria-label="Delete brand"
+        title="Delete brand"
+      >
+        ×
+      </span>
       <div className="text-2xl font-semibold text-foreground">{brand.name}</div>
       {noData ? (
         <p className="text-base text-muted-fg">

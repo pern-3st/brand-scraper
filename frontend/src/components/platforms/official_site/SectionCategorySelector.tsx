@@ -21,7 +21,7 @@ interface SectionCategorySelectorProps {
 
 const SECTIONS = ["mens", "womens", "kids"];
 const MAX_MIN = 5;
-const MAX_MAX = 500;
+const MAX_MAX = 1000;
 const MAX_STEP = 5;
 
 function norm(s: string): string {

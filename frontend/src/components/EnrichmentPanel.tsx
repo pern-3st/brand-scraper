@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getEnrichmentFields,
+  getEnrichmentHistory,
   startEnrichment,
 } from "@/lib/api";
 import type {
@@ -11,6 +12,7 @@ import type {
   FieldDef,
   FreeformPrompt,
   Platform,
+  SavedFreeformPrompt,
 } from "@/types";
 
 interface Props {
@@ -47,17 +49,48 @@ export default function EnrichmentPanel({
   const [supportsFreeform, setSupportsFreeform] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [freeform, setFreeform] = useState<FreeformDraft[]>([]);
+  const [savedPrompts, setSavedPrompts] = useState<SavedFreeformPrompt[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getEnrichmentFields(platform)
-      .then((r) => {
-        setCatalog(r.fields);
-        setSupportsFreeform(r.supports_freeform);
+    let cancelled = false;
+    Promise.all([
+      getEnrichmentFields(platform),
+      getEnrichmentHistory(brandId, platform).catch(() => null),
+    ])
+      .then(([fields, history]) => {
+        if (cancelled) return;
+        setCatalog(fields.fields);
+        setSupportsFreeform(fields.supports_freeform);
+        if (history) {
+          setSavedPrompts(history.saved_prompts);
+          if (history.most_recent) {
+            // Filter curated to the platform's current catalog so renamed/
+            // removed field ids don't get sent in a future request.
+            const knownIds = new Set(fields.fields.map((f) => f.id));
+            setSelected(
+              new Set(
+                history.most_recent.curated_fields.filter((id) => knownIds.has(id))
+              )
+            );
+            if (fields.supports_freeform) {
+              setFreeform(
+                history.most_recent.freeform_prompts.map((p) => ({
+                  localId: crypto.randomUUID(),
+                  label: p.label,
+                  prompt: p.prompt,
+                }))
+              );
+            }
+          }
+        }
       })
       .catch((e) => setError(`Failed to load fields: ${(e as Error).message}`));
-  }, [platform]);
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, brandId]);
 
   const grouped = useMemo(() => {
     if (!catalog) return new Map<string, FieldDef[]>();
@@ -96,6 +129,13 @@ export default function EnrichmentPanel({
     setFreeform((prev) => [
       ...prev,
       { localId: crypto.randomUUID(), label: "", prompt: "" },
+    ]);
+  }
+
+  function addSavedPrompt(saved: SavedFreeformPrompt) {
+    setFreeform((prev) => [
+      ...prev,
+      { localId: crypto.randomUUID(), label: saved.label, prompt: saved.prompt },
     ]);
   }
 
@@ -251,6 +291,37 @@ export default function EnrichmentPanel({
                 Ask free-form questions about each product. The column label
                 becomes the field id (e.g. &quot;Is vegan?&quot;).
               </p>
+              {savedPrompts.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs uppercase tracking-wider text-muted-fg">
+                    Saved for this brand
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {savedPrompts.map((sp) => {
+                      const inUse = freeform.some(
+                        (f) => f.label.trim() === sp.label.trim()
+                      );
+                      return (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => addSavedPrompt(sp)}
+                          disabled={inUse}
+                          title={sp.prompt}
+                          className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                            inUse
+                              ? "bg-muted/40 text-muted-fg cursor-not-allowed"
+                              : "bg-muted text-foreground/70 hover:bg-muted/80"
+                          }`}
+                        >
+                          {inUse ? "✓ " : "+ "}
+                          {sp.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="space-y-3">
                 {freeform.map((f) => (
                   <div
