@@ -15,14 +15,43 @@ export default function Dashboard({
   const [brands, setBrands] = useState<BrandSummary[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<Error | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<BrandSummary | null>(null);
 
+  // Retry on mount: the backend may still be booting on first launch
+  // (especially the Windows packaged build), so a connection-refused on
+  // the very first fetch shouldn't strand the UI on "Loading…".
   useEffect(() => {
-    listBrands().then((b) => {
-      setBrands(b);
-      setLoading(false);
-    });
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+
+    (async () => {
+      const maxAttempts = 20;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const b = await listBrands();
+          if (cancelled) return;
+          setBrands(b);
+          setLoading(false);
+          return;
+        } catch (e) {
+          if (cancelled) return;
+          if (attempt === maxAttempts) {
+            setLoadError(e as Error);
+            setLoading(false);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   async function handleCreate(name: string) {
     const brand = await createBrand(name);
@@ -54,6 +83,21 @@ export default function Dashboard({
   }
 
   if (loading) return <p className="text-sm text-muted-fg">Loading…</p>;
+
+  if (loadError) {
+    return (
+      <div className="text-center py-24 space-y-4">
+        <p className="text-foreground/80">Couldn&apos;t reach the backend.</p>
+        <p className="text-xs text-muted-fg">{loadError.message}</p>
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="cursor-pointer rounded-xl bg-accent px-6 py-3 text-sm text-white hover:bg-accent-hover"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (brands.length === 0) {
     return (
