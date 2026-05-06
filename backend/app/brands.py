@@ -12,13 +12,16 @@ Layout:
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
 import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
+
+log = logging.getLogger(__name__)
 
 
 _SLUG_STRIP = re.compile(r"[^a-z0-9-]+")
@@ -95,7 +98,7 @@ class BrandRepo:
                 spec = data.get("spec") or {}
                 derived = (
                     spec.get("shop_url")
-                    if data.get("platform") == "shopee"
+                    if data.get("platform") in {"shopee", "lazada"}
                     else spec.get("brand_url")
                 )
                 if not isinstance(derived, str) or not derived:
@@ -558,7 +561,8 @@ class BrandRepo:
     ) -> "UnifiedTable":
         """Build the unified scrape + enrichment table for a run.
 
-        - Scrape columns come from the ``ProductRecord`` schema.
+        - Scrape columns come from the run's platform-specific record class
+          (resolved via ``RECORD_CLASSES[_meta.platform]``).
         - Enrichment columns come from the selected passes.
         - Rows are keyed by ``identity.product_key(record)``; records whose
           key is ``None`` are skipped (logged in ``products_skipped_no_key``
@@ -566,7 +570,7 @@ class BrandRepo:
         - Collisions on column id: ``latest_per_field`` (default) keeps the
           most recent pass per id. ``all`` exposes both, labelled per pass.
         """
-        from app.models import ProductRecord, UnifiedColumn, UnifiedTable
+        from app.models import RECORD_CLASSES, UnifiedColumn, UnifiedTable
 
         parent = self.get_run_payload(brand_id, source_id, run_id)
         if parent is None:
@@ -583,8 +587,18 @@ class BrandRepo:
             row = {"product_key": pk, **raw}
             rows_by_key[pk] = row
 
-        # Scrape column descriptors in schema order.
-        scrape_columns = _build_scrape_columns(ProductRecord)
+        # Scrape column descriptors in schema order, dispatched on platform.
+        platform = (parent.get("_meta") or {}).get("platform")
+        record_cls = RECORD_CLASSES.get(platform) if isinstance(platform, str) else None
+        if record_cls is None:
+            log.warning(
+                "get_unified_table: run %s/%s/%s has unknown platform %r — "
+                "falling back to union of all known record classes",
+                brand_id, source_id, run_id, platform,
+            )
+            scrape_columns = _build_scrape_columns_union(RECORD_CLASSES.values())
+        else:
+            scrape_columns = _build_scrape_columns(record_cls)
 
         # Resolve included enrichment passes (newest first from list_enrichments).
         passes = self.list_enrichments(brand_id, source_id, run_id)
@@ -721,6 +735,21 @@ def _build_scrape_columns(record_cls: type) -> list[Any]:
     return cols
 
 
+def _build_scrape_columns_union(record_classes: Iterable[type]) -> list[Any]:
+    """Legacy fallback for runs without a recognisable ``_meta.platform``:
+    union the columns of every known record class, deduping by id while
+    preserving first-seen order. Equivalent to the pre-split single-model
+    behaviour, so old test fixtures without ``_meta.platform`` still work.
+    """
+    from app.models import UnifiedColumn
+    seen: dict[str, UnifiedColumn] = {}
+    for cls in record_classes:
+        for col in _build_scrape_columns(cls):
+            if col.id not in seen:
+                seen[col.id] = col
+    return list(seen.values())
+
+
 def _unwrap_optional(ann: Any) -> Any:
     import typing as _t
     origin = _t.get_origin(ann)
@@ -767,7 +796,8 @@ def _build_field_type_map(meta: dict[str, Any]) -> dict[str, str]:
 def compute_run_aggregates(*, records: list[dict[str, Any]]) -> dict[str, Any]:
     """Platform-agnostic aggregate computation, stored in run `_meta["aggregates"]`.
 
-    Both platforms emit `ProductRecord`s, so one formula works everywhere:
+    All platform record classes share `ProductRecordBase`, so one formula
+    works everywhere:
       - product_count: total records in the run
       - price_min / price_max: min/max over non-null prices
       - category_count: number of distinct non-null `category` values.

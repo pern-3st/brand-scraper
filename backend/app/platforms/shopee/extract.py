@@ -2,8 +2,8 @@
 
 The JS extractor runs against `.shop-search-result-view__item` cards on a
 rendered shop page and returns one dict per card containing every field
-we promise in ProductRecord's Shopee-populated fields (except `currency`
-and `scraped_at`, which are added by the scraper).
+we promise in ShopeeProductRecord's fields (except `currency` and
+`scraped_at`, which are added by the scraper).
 
 Per-field extraction strategy is documented in the JS comment block
 inside EXTRACT_JS. See docs/plans/2026-04-10-shopee-spike-notes.md for

@@ -20,12 +20,20 @@ from typing import Any, AsyncIterator, Callable
 from pydantic import BaseModel, TypeAdapter
 
 from app.brands import BrandRepo, compute_run_aggregates, new_enrichment_id
-from app.models import EnrichmentRequest, EnrichmentRow, ProductRecord, ProductUpdate, ScrapeRequest
+from app.models import (
+    EnrichmentRequest,
+    EnrichmentRow,
+    RECORD_CLASSES,
+    ScrapeRequest,
+    ShopeeProductUpdate,
+)
 from app.platforms.base import (
     EnrichmentExtractor,
     ProductIdentity,
     ScrapeContext,
 )
+from app.platforms.lazada.identity import LazadaProductIdentity
+from app.platforms.lazada.scraper import LazadaScraper
 from app.platforms.official_site import OfficialSiteScraper
 from app.platforms.official_site_enrichment import (
     OfficialSiteEnrichment,
@@ -49,6 +57,7 @@ log = logging.getLogger(__name__)
 PLATFORMS = {
     "official_site": OfficialSiteScraper,
     "shopee": ShopeeScraper,
+    "lazada": LazadaScraper,
 }
 
 # Enrichment registries — populated alongside each platform's extractor.
@@ -59,12 +68,12 @@ ENRICHMENT_EXTRACTORS: dict[str, type[EnrichmentExtractor]] = {
 PRODUCT_IDENTITIES: dict[str, ProductIdentity] = {
     "official_site": OfficialSiteProductIdentity(),
     "shopee": ShopeeProductIdentity(),
+    "lazada": LazadaProductIdentity(),
 }
 
 DATA_ROOT = Path(__file__).resolve().parent.parent / "data" / "brands"
 _repo = BrandRepo(root=DATA_ROOT)
 _request_adapter = TypeAdapter(ScrapeRequest)
-_record_adapter = TypeAdapter(ProductRecord)
 
 
 def get_repo() -> BrandRepo:
@@ -122,23 +131,24 @@ async def _run_job(
             async for item in stream:
                 if session.cancel_event.is_set():
                     # Mark the run as cancelled but DO NOT break. The Shopee
-                    # scraper's stream_products yields harvested ProductUpdate
-                    # values from its `finally:` block — yielding inside finally
-                    # raises RuntimeError("async generator ignored GeneratorExit")
+                    # scraper's stream_products yields harvested
+                    # ShopeeProductUpdate values from its `finally:` block —
+                    # yielding inside finally raises
+                    # RuntimeError("async generator ignored GeneratorExit")
                     # if the consumer breaks first. Letting the loop drain lets
                     # the scraper's own ctx.cancel_event check at the top of its
                     # grid loop short-circuit naturally, run finally cleanly,
                     # and deliver any harvested updates before the generator
                     # ends. See plan header "Cancellation contract".
                     status = "cancelled"
-                if isinstance(item, ProductUpdate):
+                if isinstance(item, ShopeeProductUpdate):
                     target = next(
                         (r for r in records if r.item_id == item.item_id),
                         None,
                     )
                     if target is None:
                         log.warning(
-                            "runner: ProductUpdate for unknown item_id=%s — dropped",
+                            "runner: ShopeeProductUpdate for unknown item_id=%s — dropped",
                             item.item_id,
                         )
                         continue
@@ -317,9 +327,10 @@ async def run_enrichment(session: ScrapeSession) -> None:
         return
     extractor = ENRICHMENT_EXTRACTORS[platform]()
     identity = PRODUCT_IDENTITIES[platform]
+    record_cls = RECORD_CLASSES[platform]
 
     try:
-        records = [_record_adapter.validate_python(r) for r in parent.get("records", []) or []]
+        records = [record_cls.model_validate(r) for r in parent.get("records", []) or []]
     except Exception as exc:
         log.exception("failed to load parent run records")
         _emit_fatal(session, f"could not read parent run records: {exc}")

@@ -1,0 +1,41 @@
+{
+  "url": "https://acs-m.lazada.sg/h5/mtop.lazada.shop.atmosphere.list/1.0/?jsv=2.7.2&appKey=24677475&t=1778045006158&sign=12ac3f06c3a86444bdac6f26657034b6&api=mtop.lazada.shop.atmosphere.list&v=1.0&type=originaljson&isSec=1&AntiCreep=true&timeout=20000&dataType=json&sessionOption=AutoLoginOnly&x-i18n-language=en-SG&x-i18n-regionID=SG&mockData=realtime-atmosphere.json&data=%7B%22shopId%22%3A2077803%2C%22pageTypeId%22%3A1%2C%22clientPlatform%22%3A%22pc%22%7D",
+  "status": 200,
+  "request_method": "GET",
+  "request_headers": {
+    "accept": "application/json",
+    "content-type": "application/x-www-form-urlencoded",
+    "cookie": "lzd_cid=1d307c65-3064-41e0-a320-751b652372c4; lwrid=AgGd%2B4w0yNbddfi5bExVxe5uI4RM; hng=SG|en-SG|SGD|702; _m_h5_tk=65bc8c7b6c99affb466a868d1ece6985_1778051123366; _m_h5_tk_enc=c857827749a12c46e005c87253da7335; xlly_s=1; t_fv=1778041763863; t_uid=OqRfC1cKETHwZ2IPDVJezdoBNxaruQBG; lwrtk=AAIEafs0IwjdNAGwi05Q0juGPJNVL5+0Hh3HHQo84j3AF8Ti3O08jq8=; cna=o7GBImumVmECAd8ZTUwPoqz2; _gcl_au=1.1.785902805.1778041764; _ga=GA1.2.278416466.1778041765; _gid=GA1.2.2094588344.1778041765; _fbp=fb.1.1778041765229.9007420574995522; AMCV_126E248D54200F960A4C98C6%40AdobeOrg=-1124106680%7CMCIDTS%7C20580%7CMCMID%7C67316111996883534101807012313170136498%7CMCAAMLH-1778646565%7C6%7CMCAAMB-1778646565%7C6G1ynYcLPuiQxYZrsz_pkqfLG9yMXBpb2zX5dvJdYQJzPXImdj0y%7CMCOPTOUT-1778048965s%7CNONE%7CvVersion%7C5.2.0; _uetsid=29a913c0490411f1bc4d236016b61776; _uetvid=29a92780490411f195879dca60705c92; _ga_4NNQCTZ3M8=GS2.2.s1778041765$o1$g1$t1778042206$j60$l0$h0; lzd_sid=130c17f09373bdbee330aee05990ba91; _tb_token_=7ebeb77d19e17; undefined_click_time=1778045005946; t_sid=AP68LcbaZdpO2FwCbME1oD32ELG157HI; utm_channel=NA; isg=BPDwK__xbQl2QzENWZLfRtkCwbhCOdSDc4z-wOpBvMsepZBPkkmkE0aT-aXFNYxb; tfstk=gAJIfUORCUpwLriKyyoafPJvl4B5Ock2wusJm3eU29BLyzKA7To3aXj5FNtk8wQeUUtRWHoh9LSePdTDRDfyvwzW59vwT87E-TtJuTgquxk2xHXCequqk5z4VTI-UahN9AnCzmgquxkNGEgDuq-UgtAGBgbOvJIL9c6O0MBRvTQKfNI5m7epyTnsfiIbJJILpNFOVNQReTLJXcslWMBReUKtfgYkyJsaPN-I2MD4zXuhoHQ_e8ptK6_Xv7y8edsCOLKd5h-wCM1Cl_NcE4pXDHpcVLmYNaty9eSMPxg1BpTBp16SFRXecCLC1Bg7C1A9mLC6sqNDmHLBMspKCDTWWnAcpp3uLwAJXLQwp0y5kI-cCGvrSJQW6QpFtT4KRG9BcLO54zwVlg84Nl10FG_qfcNuZfga-UZLPfDh9GjZzci_gB40e82wUcNQA6IGAZnsfSR1.; epssw=12*YyeeawrGGI6w-a5zyFoh8LSHfJZc9e9ub0_HNK6C4UrGGGGG4UrGtOoh8UiCSLLklKmFGGG3m7OLm-nJb08SQ664UtErwJBGvW78cXjYxBNxiKFaYRi4OvhAtx5lFMhnRGIJmrjrA08SQGAqrIGGRGIdjC2OV8nhshEtXOZBXwp5tsaNiEpJCWVkHpjTjDl1E2BC-WiGGGb1s32baX_GGGGGszYGGREMbwZxPqT4AQb7G_5d_Byza6ssm3Jh1QfS3Sfh7Q0DDXMBAJtimkhb9a88BKjA79nl46MiJZIDGbxlD4zyH8PiN76f02A3",
+    "origin": "https://www.lazada.sg",
+    "referer": "https://www.lazada.sg/shop/za-huo-dian-sg/",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "entrance": "",
+    "sec-ch-ua": "\"Google Chrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\"",
+    "traffic": "",
+    "x-i18n-language": "en-SG",
+    "x-i18n-regionid": "SG",
+    "x-ua": "140#qBXo/KrkzzPoUQo23xDb4pN8s9DJphLyoBld61gRbYLBnvyqgqvJv00PAezmQPskkIr2/6hqzzcL40PqRcfzzjQ4ijlqlQzx2DD3VthqzFtzwYyIlI1xY8+iVXE/tFzx2Dc33b/BeHmijDapVrMn3rNmgkYEG5R5hPU4n8fKJKz0pKziPLYJIk1oXmXDE1kR3uolnYUzMcG66ZXvhRoGe0MSavpHI2dpDPAXRJGmj9UefG4NSqeXuJKPlFxYgfBlkZ6DYj3nbC9HEZo417EeWjNb+MYY2hW+9VDaaqSK3F6W6fNNOwpIdafap3eCLuFDVaooF1KyOqyIMHMenHjdy1HLlNnK6A7z1vY7UVl2PvgZJqNw5aN4saB+GsljwB+t/fhNkvdvQRQHQP8ofA/DsZp08hvjkupnXDmiKrSYMqzw1Gd0MiDm7MYvkgQ4qN9pcT80/O1L05NWR4HhddViOaiuSHautNoR35f9h1t2xrkYLPDZLieCD/nuEPOYmcd62TLckR1Lh9C/rRsc91qIwLxnjXlDMd8/uoXEpxeYBsRZgMQ2P9lGRvoqCt2P5KU6RersNPV4ikUxeJqUUpGcc533eNoIEE1zqZc0q//kaEJg7mXuRUrsC6/6kBlywkEPubBSVREIZVcxHD3DKPZgQ4UId7dzHqBVV4E+YztHlmhJ1u4DDURqSJe7Vj5SIYX6crZAAa+wjUQr4XcVYWGqCjPDfUP4FrehEPSU8UkYBinADtKayz7fbHN3Ov68iSqIhvt3o7Z6QUnK+nMbCdnpZ9feZ8VqK0lWIyNN0oIob9tLrN5JndsxpgYjHvjTYNqWcE1v+Q==",
+    "x-umidtoken": "T2gATYde1MhWLoQltzgtVOkLkW21jkwP6_zLeSL635oOlwpySWaULA-9Cy5QYVwyZuY="
+  },
+  "response_headers": {
+    "access-control-expose-headers": "x-eagleeye-id",
+    "content-encoding": "gzip",
+    "eagleeye-traceid": "0bb4ab0717780450061872499e9632",
+    "x-eagleeye-id": "0bb4ab0717780450061872499e9632",
+    "x-aserver-sret": "SUCCESS",
+    "mtop-x-provider": "39a764177498176e1d2cfa5c3665738801e6fa57c41947e7bfddddbceec04b3c38e79fbe1cf79d4951567f21530aa1f1",
+    "date": "Wed, 06 May 2026 05:23:26 GMT",
+    "content-type": "application/json;charset=UTF-8",
+    "vary": "Accept-Encoding",
+    "x-node": "4e3148ff66d563cb95f4eb1f0f146efe",
+    "cache-control": "no-cache",
+    "pragma": "no-cache",
+    "access-control-allow-credentials": "true",
+    "s-rt": "4",
+    "access-control-allow-origin": "https://www.lazada.sg",
+    "x-powered-by": "m.taobao.com",
+    "server": "Tengine/Aserver"
+  }
+}

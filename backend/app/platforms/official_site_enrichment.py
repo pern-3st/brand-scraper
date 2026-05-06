@@ -109,8 +109,8 @@ class OfficialSiteProductIdentity:
     """Derives a stable key from ``record.product_url`` (or ``record["product_url"]``).
 
     Duck-typed to accept both dict (read path — parent run payload is raw JSON)
-    and ``ProductRecord`` (write path — runner validates records via
-    ``_record_adapter`` before handing to the extractor).
+    and ``OfficialSiteProductRecord`` (write path — runner validates records
+    via ``RECORD_CLASSES[platform]`` before handing to the extractor).
     """
 
     def product_key(self, record: Any) -> str | None:

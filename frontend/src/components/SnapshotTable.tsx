@@ -25,8 +25,9 @@ interface Props {
   interactive?: boolean;
 }
 
-// Columns that exist on ProductRecord but are folded into other cells
-// (price → price+mrp+currency, product_name → linked to product_url).
+// Columns that exist on a record class but are folded into other cells
+// (price → price+mrp+currency, product_name → linked to product_url) or
+// are structurally noisy and not worth surfacing (scraped_at, product_key).
 const HIDDEN_IDS = new Set([
   "scraped_at",
   "currency",
@@ -34,7 +35,20 @@ const HIDDEN_IDS = new Set([
   "product_url",
   "product_key",
   "monthly_sold_text",
-  "category",
+  // Lazada: redundant IDs + structural noise. Display fields like
+  // brand_name / category_name surface the same info more usefully.
+  "sku_id",
+  "sku",
+  "shop_id",
+  "seller_id",
+  "brand_id",
+  "category_id",
+  "category_lineage",
+  "promotion_start_time",
+  "promotion_labels",
+  "saved_text",
+  "free_shipping",
+  "volume_weekly",
 ]);
 
 const LABEL_OVERRIDES: Record<string, string> = {
@@ -47,6 +61,16 @@ const LABEL_OVERRIDES: Record<string, string> = {
   rating_star: "Rating",
   historical_sold_count: "Sold (total)",
   monthly_sold_count: "Sold (monthly)",
+  // Lazada
+  rating: "Rating",
+  review_count: "Reviews",
+  volume_monthly: "Sold (monthly)",
+  volume_total: "Sold (total)",
+  hit_promotion: "Promotion",
+  promotion_end_time: "Promo ends",
+  brand_name: "Brand",
+  category_name: "Category",
+  mall: "LazMall",
 };
 
 export default function SnapshotTable({
@@ -394,28 +418,77 @@ export const overridesById: Record<string, Renderer> = {
     );
   },
   item_id: (v) => (v == null ? <Dash /> : <span className="font-mono text-xs text-muted-fg">{String(v)}</span>),
+  // Lazada `hit_promotion` is an opaque camelCase enum
+  // (`promPrice`/`flashSale`/`mockedSalePrice`/...). Display as a soft
+  // sentence-case badge so the value is readable even for values we
+  // haven't catalogued.
+  hit_promotion: (v) => {
+    if (v == null || v === "") return <Dash />;
+    return (
+      <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent whitespace-nowrap">
+        {camelToSentence(String(v))}
+      </span>
+    );
+  },
+  // Lazada `promotion_end_time` is ms epoch; Lazada uses 0 to mean "no
+  // active promo" so treat that as empty.
+  promotion_end_time: (v) => {
+    if (v == null) return <Dash />;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return <Dash />;
+    const d = new Date(n);
+    if (Number.isNaN(d.getTime())) return <Dash />;
+    return (
+      <span className="tabular-nums whitespace-nowrap text-foreground/80">
+        {d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+      </span>
+    );
+  },
 };
+
+function camelToSentence(s: string): string {
+  const spaced = s.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 // -- helpers ----------------------------------------------------------------
 
 /** Build UnifiedColumn descriptors for ProductRecord-shaped rows (used by
  *  progress views that stream records before a completed run exists). */
-export function productRecordColumns(platform: "shopee" | "official_site"): UnifiedColumn[] {
-  const base: UnifiedColumn[] = [
+export function productRecordColumns(
+  platform: "shopee" | "official_site" | "lazada",
+): UnifiedColumn[] {
+  const head: UnifiedColumn[] = [
     { id: "image_url", label: "image_url", type: "str", source: "scrape", enrichment_id: null },
     { id: "product_name", label: "product_name", type: "str", source: "scrape", enrichment_id: null },
     { id: "price", label: "price", type: "float", source: "scrape", enrichment_id: null },
     { id: "discount_pct", label: "discount_pct", type: "int", source: "scrape", enrichment_id: null },
-    ...(platform === "shopee"
-      ? ([
+  ];
+  const middle: UnifiedColumn[] =
+    platform === "shopee"
+      ? [
           { id: "rating_star", label: "rating_star", type: "float", source: "scrape", enrichment_id: null },
           { id: "historical_sold_count", label: "historical_sold_count", type: "int", source: "scrape", enrichment_id: null },
           { id: "monthly_sold_count", label: "monthly_sold_count", type: "int", source: "scrape", enrichment_id: null },
-        ] as UnifiedColumn[])
-      : []),
+        ]
+      : platform === "lazada"
+      ? [
+          { id: "mall", label: "mall", type: "bool", source: "scrape", enrichment_id: null },
+          { id: "volume_monthly", label: "volume_monthly", type: "int", source: "scrape", enrichment_id: null },
+          { id: "volume_total", label: "volume_total", type: "int", source: "scrape", enrichment_id: null },
+          { id: "rating", label: "rating", type: "float", source: "scrape", enrichment_id: null },
+          { id: "review_count", label: "review_count", type: "int", source: "scrape", enrichment_id: null },
+          { id: "brand_name", label: "brand_name", type: "str", source: "scrape", enrichment_id: null },
+          { id: "category_name", label: "category_name", type: "str", source: "scrape", enrichment_id: null },
+          { id: "hit_promotion", label: "hit_promotion", type: "str", source: "scrape", enrichment_id: null },
+          { id: "promotion_end_time", label: "promotion_end_time", type: "int", source: "scrape", enrichment_id: null },
+        ]
+      : [];
+  return [
+    ...head,
+    ...middle,
     { id: "is_sold_out", label: "is_sold_out", type: "bool", source: "scrape", enrichment_id: null },
   ];
-  return base;
 }
 
 function itemsLabel(interactive: boolean, filtered: number, total: number): string {

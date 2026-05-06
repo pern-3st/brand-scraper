@@ -12,7 +12,7 @@ from app.models import (
     EnrichmentRequest,
     FieldDef,
     FreeformPrompt,
-    ProductRecord,
+    OfficialSiteProductRecord,
 )
 from app.platforms import official_site_enrichment as ose
 from app.platforms.base import ScrapeContext
@@ -30,7 +30,7 @@ def test_identity_uses_canonical_url():
 def test_identity_accepts_basemodel():
     ident = ose.OfficialSiteProductIdentity()
     from datetime import datetime, timezone
-    rec = ProductRecord(
+    rec = OfficialSiteProductRecord(
         product_name="X",
         product_url="https://brand.com/p/123",
         scraped_at=datetime.now(timezone.utc),
@@ -432,7 +432,7 @@ async def test_stream_enrichments_uses_patchright_session(monkeypatch):
     monkeypatch.setattr(ose, "_pace_sleep", fake_pace)
 
     records = [
-        ProductRecord(
+        OfficialSiteProductRecord(
             product_name=f"P{i}",
             product_url=f"https://acme.test/p/{i}",
             scraped_at=datetime.now(timezone.utc),
@@ -503,7 +503,7 @@ async def test_stream_enrichments_warms_up_before_first_product(monkeypatch):
     monkeypatch.setattr(ose, "_warmup_idle", fake_warmup_idle)
 
     records = [
-        ProductRecord(
+        OfficialSiteProductRecord(
             product_name="P1",
             product_url="https://www2.hm.com/en_sg/productpage.1209140021.html",
             scraped_at=datetime.now(timezone.utc),
@@ -604,7 +604,7 @@ async def test_stream_enrichments_aborts_on_akamai_block(monkeypatch):
     monkeypatch.setattr(ose, "_derive_warmup_url", lambda _: None)
 
     records = [
-        ProductRecord(
+        OfficialSiteProductRecord(
             product_name=f"P{i}",
             product_url=f"https://acme.test/p/{i}",
             scraped_at=datetime.now(timezone.utc),

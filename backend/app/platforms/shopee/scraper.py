@@ -10,14 +10,14 @@ Approach:
 3. After each navigation, wait for GRID_CARD_SELECTOR with a 10s timeout.
 4. Extract per-card fields with a single page.evaluate(EXTRACT_JS) call.
 5. Dedupe against a cumulative set of item_ids. Yield each new record
-   as a ProductRecord with late-arriving fields left as None.
+   as a ShopeeProductRecord with late-arriving fields left as None.
 6. Terminate on: zero new item_ids after a navigation, max_products
    reached, ctx.cancel_event set, or navigation failure.
 
 Late-arriving harvest (2026-05-05): a `page.on("response")` listener
 fills a background `harvest` dict from Shopee's `/api/v4/shop/rcmd_items`
 XHR which fires automatically on every grid nav. At end-of-stream
-(in `finally:` so cancellation doesn't lose data), one ProductUpdate
+(in `finally:` so cancellation doesn't lose data), one ShopeeProductUpdate
 is yielded per harvested item carrying monthly_sold + category_id +
 brand + liked_count + promotion_labels + voucher_code + voucher_discount.
 The runner mutates the matching record. Replaced the older recommend-XHR
@@ -31,7 +31,7 @@ import logging
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
-from app.models import ProductRecord, ProductUpdate
+from app.models import ShopeeProductRecord, ShopeeProductUpdate
 from app.platforms.base import ScrapeContext
 from app.platforms.shopee._rcmd_items_harvest import (
     HarvestEntry,
@@ -79,7 +79,7 @@ class ShopeeScraper:
         self,
         request: ShopeeScrapeRequest,
         ctx: ScrapeContext,
-    ) -> AsyncIterator[ProductRecord]:
+    ) -> AsyncIterator[ShopeeProductRecord | ShopeeProductUpdate]:
         shop_url = str(request.shop_url)
         max_products = request.max_products
 
@@ -164,7 +164,7 @@ class ShopeeScraper:
                         )
                         return
             finally:
-                # Drain harvested late-arriving fields as ProductUpdate events.
+                # Drain harvested late-arriving fields as ShopeeProductUpdate events.
                 # Runs on clean exit, limit-reached, AND cancellation —
                 # provided the runner does NOT break the async-for loop on
                 # cancel (see runner.py:124-132 / "Cancellation contract").
@@ -177,7 +177,7 @@ class ShopeeScraper:
                     h = harvest.get(iid)
                     if not h:
                         continue
-                    yield ProductUpdate(
+                    yield ShopeeProductUpdate(
                         item_id=iid,
                         monthly_sold_count=h.monthly_int,
                         monthly_sold_text=h.monthly_text,
@@ -190,20 +190,20 @@ class ShopeeScraper:
                     )
                     update_count += 1
                 log.info(
-                    "shopee: emitted %d ProductUpdate events "
+                    "shopee: emitted %d ShopeeProductUpdate events "
                     "(harvest=%d, grid_items=%d)",
                     update_count, len(harvest), len(cumulative),
                 )
 
 
-def _to_record(item: dict) -> ProductRecord | None:
-    """Convert an extract_grid_items dict into a ProductRecord.
+def _to_record(item: dict) -> ShopeeProductRecord | None:
+    """Convert an extract_grid_items dict into a ShopeeProductRecord.
 
     Returns None if required Shopee fields (item_id, product_name,
     product_url) are missing or malformed. The caller logs and skips.
     """
     try:
-        return ProductRecord(
+        return ShopeeProductRecord(
             item_id=int(item["item_id"]),
             product_name=str(item["product_name"]),
             product_url=str(item["product_url"]),

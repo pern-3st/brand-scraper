@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { API_URL } from "@/lib/api";
-import { LogEntry, ProductRecord, ProductUpdate, DoneInfo } from "@/types";
+import { LogEntry, ProductRecord, ShopeeProductUpdate, DoneInfo } from "@/types";
 
 export type StreamStatus =
   | "connecting"
@@ -85,19 +85,23 @@ export function useScrapeStream(scrapeId: string | null): ScrapeStreamState {
     });
 
     es.addEventListener("product_update", (e) => {
-      const upd: ProductUpdate = JSON.parse(e.data);
+      // product_update events are Shopee-only — they carry an item_id and
+      // mutate Shopee-specific fields. Both Shopee and Lazada records have
+      // `item_id`, so we additionally narrow on `monthly_sold_count` (a
+      // Shopee-only field) to skip Lazada rows that happen to share an id.
+      const upd: ShopeeProductUpdate = JSON.parse(e.data);
       update((s) => ({
-        products: s.products.map((p) =>
-          p.item_id === upd.item_id
-            ? {
-                ...p,
-                monthly_sold_count:
-                  upd.monthly_sold_count ?? p.monthly_sold_count,
-                monthly_sold_text:
-                  upd.monthly_sold_text ?? p.monthly_sold_text,
-              }
-            : p,
-        ),
+        products: s.products.map((p) => {
+          if (!("item_id" in p) || p.item_id !== upd.item_id) return p;
+          if (!("monthly_sold_count" in p)) return p;
+          return {
+            ...p,
+            monthly_sold_count:
+              upd.monthly_sold_count ?? p.monthly_sold_count,
+            monthly_sold_text:
+              upd.monthly_sold_text ?? p.monthly_sold_text,
+          };
+        }),
       }));
     });
 

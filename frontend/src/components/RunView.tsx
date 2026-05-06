@@ -402,24 +402,101 @@ function downloadCsv(table: UnifiedTable, filename: string) {
 
 function toCsv(table: UnifiedTable): string {
   // CSV surfaces all columns (including ones hidden in the UI like scraped_at
-  // and mrp/currency) so the export is lossless.
+  // and mrp/currency) so the export is lossless. Per-column formatting mirrors
+  // the run page so the values match what users see.
   const cols: UnifiedColumn[] = table.columns;
   const header = cols.map((c) => csvEscape(c.label)).join(",");
   const lines = table.rows.map((row) =>
-    cols.map((c) => csvEscape(csvValue(row[c.id]))).join(","),
+    cols.map((c) => csvEscape(formatCsvCell(c, row))).join(","),
   );
   return [header, ...lines].join("\n");
 }
 
-function csvValue(v: unknown): string {
-  if (v === null || v === undefined) return "";
+function formatCsvCell(col: UnifiedColumn, row: Record<string, unknown>): string {
+  const v = row[col.id];
+  const currency = typeof row.currency === "string" ? row.currency : "";
+
+  switch (col.id) {
+    case "voucher_discount": {
+      const n = toFiniteNumber(v);
+      if (n === null) return "";
+      const amount = n / 100_000;
+      return currency ? `${currency} ${amount.toFixed(2)}` : amount.toFixed(2);
+    }
+    case "price":
+    case "mrp": {
+      const n = toFiniteNumber(v);
+      if (n === null) return "";
+      return currency ? `${currency} ${n.toFixed(2)}` : n.toFixed(2);
+    }
+    case "discount_pct": {
+      const n = toFiniteNumber(v);
+      if (n === null) return "";
+      return `-${n}%`;
+    }
+    case "rating_star": {
+      const n = toFiniteNumber(v);
+      if (n === null) return "";
+      return `★ ${n.toFixed(1)}`;
+    }
+    case "is_sold_out":
+      return v ? "Sold out" : "";
+    case "hit_promotion": {
+      if (v == null || v === "") return "";
+      return camelToSentence(String(v));
+    }
+    case "promotion_end_time":
+    case "promotion_start_time": {
+      const n = toFiniteNumber(v);
+      if (n === null || n <= 0) return "";
+      const d = new Date(n);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
+
+  switch (col.type) {
+    case "bool":
+      if (v === true) return "Yes";
+      if (v === false) return "No";
+      return "";
+    case "int": {
+      const n = toFiniteNumber(v);
+      return n === null ? "" : n.toLocaleString();
+    }
+    case "float": {
+      const n = toFiniteNumber(v);
+      return n === null ? "" : n.toFixed(2);
+    }
+    case "list[str]":
+      return Array.isArray(v) ? v.join("; ") : "";
+    case "str":
+      return v == null ? "" : String(v);
+  }
+
+  if (v == null) return "";
   if (Array.isArray(v)) return v.join("; ");
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
 
+function toFiniteNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function csvEscape(s: string): string {
   return `"${s.replace(/"/g, '""')}"`;
+}
+
+function camelToSentence(s: string): string {
+  const spaced = s.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function isLegacyOfficialSitePayload(records: unknown[]): boolean {

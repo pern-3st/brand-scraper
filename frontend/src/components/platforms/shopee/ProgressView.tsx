@@ -1,13 +1,13 @@
 "use client";
 
-import { DoneInfo, LogEntry, ProductRecord } from "@/types";
+import { DoneInfo, LogEntry, ShopeeProductRecord } from "@/types";
 import type { StreamStatus } from "@/hooks/useScrapeStream";
 import SnapshotTable, { productRecordColumns } from "@/components/SnapshotTable";
 
 const SHOPEE_COLUMNS = productRecordColumns("shopee");
 
 interface ProgressViewProps {
-  products: ProductRecord[];
+  products: ShopeeProductRecord[];
   logs: LogEntry[];
   doneInfo: DoneInfo | null;
   isStreaming: boolean;

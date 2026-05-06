@@ -17,7 +17,7 @@ import pytest
 from app.models import (
     EnrichmentRequest,
     FreeformPrompt,
-    ProductRecord,
+    ShopeeProductRecord,
 )
 from app.platforms.base import ScrapeContext
 from app.platforms.shopee import enrichment as se
@@ -33,7 +33,7 @@ def test_identity_uses_item_id_as_string():
 
 def test_identity_accepts_basemodel():
     ident = se.ShopeeProductIdentity()
-    rec = ProductRecord(
+    rec = ShopeeProductRecord(
         product_name="X",
         item_id=42,
         scraped_at=datetime.now(timezone.utc),

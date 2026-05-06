@@ -1,8 +1,8 @@
-export type Platform = "official_site" | "shopee";
+export type Platform = "official_site" | "shopee" | "lazada";
 
-export interface ProductRecord {
-  // Mirrors backend/app/models.py::ProductRecord.
-  // Core (populated by every scraper)
+// Mirrors backend/app/models.py::ProductRecordBase + per-platform subclasses.
+
+export interface ProductRecordBase {
   product_name: string;
   product_url: string | null;
   image_url: string | null;
@@ -12,9 +12,10 @@ export interface ProductRecord {
   discount_pct: number | null;
   is_sold_out: boolean;
   scraped_at: string;
+}
 
-  // Shopee-only (null on official_site)
-  item_id: number | null;
+export interface ShopeeProductRecord extends ProductRecordBase {
+  item_id: number;
   rating_star: number | null;
   historical_sold_count: number | null;
   monthly_sold_count: number | null;
@@ -25,13 +26,55 @@ export interface ProductRecord {
   promotion_labels: string[];
   voucher_code: string | null;
   voucher_discount: number | null;
+}
 
-  // Official-site-only (null on shopee)
+export interface OfficialSiteProductRecord extends ProductRecordBase {
   category: string | null;
 }
 
-export interface ProductUpdate {
-  // Mirrors backend/app/models.py::ProductUpdate.
+export interface LazadaProductRecord extends ProductRecordBase {
+  // Identification
+  item_id: number;
+  sku_id: number | null;
+  sku: string | null;
+
+  // Pricing extras
+  saved_text: string | null;
+
+  // Promotion
+  hit_promotion: string | null;
+  promotion_start_time: number | null;
+  promotion_end_time: number | null;
+  promotion_labels: string[];
+
+  // Stock & shipping
+  free_shipping: boolean;
+  mall: boolean;
+
+  // Popularity / reviews
+  rating: number | null;
+  review_count: number | null;
+  volume_monthly: number | null;
+  volume_weekly: number | null;
+  volume_total: number | null;
+
+  // Shop / brand / category
+  shop_id: number | null;
+  seller_id: number | null;
+  brand_id: number | null;
+  brand_name: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  category_lineage: string[];
+}
+
+export type ProductRecord =
+  | ShopeeProductRecord
+  | OfficialSiteProductRecord
+  | LazadaProductRecord;
+
+export interface ShopeeProductUpdate {
+  // Mirrors backend/app/models.py::ShopeeProductUpdate.
   item_id: number;
   monthly_sold_count: number | null;
   monthly_sold_text: string | null;

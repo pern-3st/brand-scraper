@@ -1,6 +1,6 @@
 "use client";
 
-import { ProductRecord } from "@/types";
+import { OfficialSiteProductRecord } from "@/types";
 import type { StreamStatus } from "@/hooks/useScrapeStream";
 import SnapshotTable, { productRecordColumns } from "@/components/SnapshotTable";
 
@@ -10,7 +10,7 @@ interface Props {
   brand: string;
   section: string;
   categories: string[];
-  products: ProductRecord[];
+  products: OfficialSiteProductRecord[];
   isStreaming: boolean;
   isDone: boolean;
   status: StreamStatus;

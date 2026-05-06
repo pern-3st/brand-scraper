@@ -46,7 +46,7 @@ class ShopeeProductIdentity:
     """Shopee's stable per-product key is the integer ``item_id``.
 
     URL slugs change; IDs don't — confirmed during the 2026-04-10 spike.
-    Accepts dict (read path — raw JSON) and ``ProductRecord`` (write path).
+    Accepts dict (read path — raw JSON) and ``ShopeeProductRecord`` (write path).
     """
 
     def product_key(self, record: Any) -> str | None:

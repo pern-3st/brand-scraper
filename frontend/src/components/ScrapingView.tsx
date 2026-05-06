@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import { useScrapeStream } from "@/hooks/useScrapeStream";
 import { cancelScrape, resumeLogin, getBrand } from "@/lib/api";
-import type { Source } from "@/types";
+import type {
+  LazadaProductRecord,
+  OfficialSiteProductRecord,
+  ShopeeProductRecord,
+  Source,
+} from "@/types";
 import LoginPausedBanner from "./shell/LoginPausedBanner";
 import LogFeed from "./shell/LogFeed";
 import OfficialSiteProgress from "./platforms/official_site/ProgressView";
 import ShopeeProgress from "./platforms/shopee/ProgressView";
+import LazadaProgress from "./platforms/lazada/ProgressView";
 
 export default function ScrapingView({
   brandId,
@@ -59,14 +65,22 @@ export default function ScrapingView({
               brand={String(source.spec.brand_url ?? "")}
               section={String(source.spec.section ?? "")}
               categories={(source.spec.categories as string[]) ?? []}
-              products={products}
+              products={products as OfficialSiteProductRecord[]}
               isStreaming={isStreaming}
               isDone={isTerminal}
               status={status}
             />
-          ) : (
+          ) : source.platform === "shopee" ? (
             <ShopeeProgress
-              products={products}
+              products={products as ShopeeProductRecord[]}
+              logs={logs}
+              doneInfo={doneInfo}
+              isStreaming={isStreaming}
+              status={status}
+            />
+          ) : (
+            <LazadaProgress
+              products={products as LazadaProductRecord[]}
               logs={logs}
               doneInfo={doneInfo}
               isStreaming={isStreaming}

@@ -344,6 +344,7 @@ function statusLabel(status: string): string {
 
 function primaryUrl(s: Source): string {
   if (s.platform === "shopee") return String(s.spec.shop_url ?? "");
+  if (s.platform === "lazada") return String(s.spec.shop_url ?? "");
   if (s.platform === "official_site") return String(s.spec.brand_url ?? "");
   return "";
 }

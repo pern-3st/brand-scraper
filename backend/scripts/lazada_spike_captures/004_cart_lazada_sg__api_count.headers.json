@@ -1,0 +1,42 @@
+{
+  "url": "https://cart.lazada.sg/cart/api/count",
+  "status": 200,
+  "request_method": "GET",
+  "request_headers": {
+    "accept": "application/json, text/javascript",
+    "content-type": "application/x-www-form-urlencoded",
+    "cookie": "lzd_cid=1d307c65-3064-41e0-a320-751b652372c4; lwrid=AgGd%2B4w0yNbddfi5bExVxe5uI4RM; hng=SG|en-SG|SGD|702; _m_h5_tk=65bc8c7b6c99affb466a868d1ece6985_1778051123366; _m_h5_tk_enc=c857827749a12c46e005c87253da7335; xlly_s=1; t_fv=1778041763863; t_uid=OqRfC1cKETHwZ2IPDVJezdoBNxaruQBG; lwrtk=AAIEafs0IwjdNAGwi05Q0juGPJNVL5+0Hh3HHQo84j3AF8Ti3O08jq8=; cna=o7GBImumVmECAd8ZTUwPoqz2; _gcl_au=1.1.785902805.1778041764; _ga=GA1.2.278416466.1778041765; _gid=GA1.2.2094588344.1778041765; _fbp=fb.1.1778041765229.9007420574995522; AMCV_126E248D54200F960A4C98C6%40AdobeOrg=-1124106680%7CMCIDTS%7C20580%7CMCMID%7C67316111996883534101807012313170136498%7CMCAAMLH-1778646565%7C6%7CMCAAMB-1778646565%7C6G1ynYcLPuiQxYZrsz_pkqfLG9yMXBpb2zX5dvJdYQJzPXImdj0y%7CMCOPTOUT-1778048965s%7CNONE%7CvVersion%7C5.2.0; _uetsid=29a913c0490411f1bc4d236016b61776; _uetvid=29a92780490411f195879dca60705c92; _ga_4NNQCTZ3M8=GS2.2.s1778041765$o1$g1$t1778042206$j60$l0$h0; isg=BLKy_lcDDzfdxTMLb1i9KJfoA_6UQ7bdbdZ8RnyL3mV-D1IJZNMG7bht-6Ozfy51; lzd_sid=130c17f09373bdbee330aee05990ba91; _tb_token_=7ebeb77d19e17; tfstk=gKjqEDOUDhfSGzFhL9xazuMkqB-vvhPCIGO6IOXMhIAmcmGGz_CZC-FTkaRGtQnf1nt1aPf6a1gXctvab11WomsXmxQRO9mfcrKsbnK9jWNQAkaAHhKGvYiRfIBled2WnqfW4Dx9jWN7VSpXJhCqdBBvmT2yCdpio1miq8JBphmDSm0oZQpMjhmDnbAkdpnmSFfGE8J9ZCxMj1xuUddkshxMrYShXJJ9o-rTS_noxKY2ttArbOIynEuAnQoijg7yuBmBacmG4KXiP-ESmkRllNjXqiVo93XdPsvyYlkwUwWkmK5TvmKcKTbMuGzspCQPEwTPyxwvUiWFbp8qZ-ROcsSwkMVI2IbP2G-fPSoB6Fb5DeIbZm-hJttfS_2ijC7kIgzn6L21CGQqsV8DeLRQU87C106cnLEagV39k-pyO-miSVcIJcgVDautWUvyUBwmf; epssw=12*YR7J5wtGGIQG-UXFV-9FsLpgrwPh1q9u9JuON9qSMFUF4johl-IGtOoh8UiIYPyL4RxzGGGkvC76b3AO7wHbbuIjGO1_VuGkX19H7dRWzfGbDvw43uJzkkyOy8ESEO46b38SQT3MwOtoXGGGq8FkElsays7YXGGGKwttqL6ugZvQS8_vijgfOGRhmKmf25gOIGGGskN2ITpqyDKGGGRxGGGvjmlNa5O_fLIX8wfsGGRGd88tJT8rDsPJxSfJtIOB2ww0auHyziN7IQ0KL9Tr07GxaCbQoy5ziGG1XJRtPxgPYxpAL1ouRw..",
+    "origin": "https://www.lazada.sg",
+    "referer": "https://www.lazada.sg/shop/za-huo-dian-sg/",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "x-requested-with": "XMLHttpRequest",
+    "sec-ch-ua": "\"Google Chrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\""
+  },
+  "response_headers": {
+    "s_v": "4.0.2.0",
+    "s_status": "STATUS_NOT_EXISTED",
+    "s_read_unit": "[SG:CENTER]",
+    "eagleeye-traceid-daily": "21411e4417780450059427605efb82",
+    "x-content-type-options": "nosniff",
+    "eagleeye-traceid": "21411e4417780450059427605efb82",
+    "s_ip": "33.65.35.179",
+    "p3p": "CP='CURa ADMa DEVa PSAo PSDo OUR BUS UNI PUR INT DEM STA PRE COM NAV OTC NOI DSP COR'",
+    "date": "Wed, 06 May 2026 05:23:25 GMT",
+    "s_tag": "4398047887392|67108864^1|^^",
+    "content-type": "application/json;charset=utf-8",
+    "strict-transport-security": "max-age=31536000 ; includeSubDomains, max-age=0",
+    "cache-control": "no-store",
+    "timing-allow-origin": "*",
+    "s_group": "lazada_member_session_LAZADA_SG",
+    "s_ucode": "SG:CENTER",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "https://www.lazada.sg",
+    "s_tid": "21411e4417780450059427605efb82",
+    "x-application-context": "lazada-buyer-portal:7001",
+    "content-length": "146",
+    "x-xss-protection": "1; mode=block",
+    "server": "Tengine/Aserver"
+  }
+}

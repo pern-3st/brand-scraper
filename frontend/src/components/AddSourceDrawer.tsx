@@ -5,6 +5,7 @@ import { createSource, updateSource } from "@/lib/api";
 import type { Platform, Source } from "@/types";
 import OfficialSiteAddSourceForm from "./platforms/official_site/AddSourceForm";
 import ShopeeAddSourceForm from "./platforms/shopee/AddSourceForm";
+import LazadaAddSourceForm from "./platforms/lazada/AddSourceForm";
 import { formatPlatform } from "@/lib/format";
 
 export default function AddSourceDrawer({
@@ -83,7 +84,7 @@ export default function AddSourceDrawer({
           </div>
         ) : (
           <div className="flex gap-2">
-            {(["official_site", "shopee"] as Platform[]).map((p) => (
+            {(["official_site", "shopee", "lazada"] as Platform[]).map((p) => (
               <button
                 key={p}
                 onClick={() => setPlatform(p)}
@@ -127,8 +128,18 @@ export default function AddSourceDrawer({
               if (!nameDirty) setName(url);
             }}
           />
-        ) : (
+        ) : activePlatform === "shopee" ? (
           <ShopeeAddSourceForm
+            key={formKey}
+            onSubmit={submit}
+            initialSpec={initialSpec}
+            submitLabel={isEditing ? "Save changes" : "Add source"}
+            onPrimaryUrlChange={(url) => {
+              if (!nameDirty) setName(url);
+            }}
+          />
+        ) : (
+          <LazadaAddSourceForm
             key={formKey}
             onSubmit={submit}
             initialSpec={initialSpec}

@@ -1,5 +1,5 @@
 """Tests that `_run_job` correctly mutates an existing record on
-`ProductUpdate` and emits a `product_update` SSE event."""
+`ShopeeProductUpdate` and emits a `product_update` SSE event."""
 from __future__ import annotations
 
 import asyncio
@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from app.models import ProductRecord, ProductUpdate
+from app.models import ShopeeProductRecord, ShopeeProductUpdate
 from app.runner import _run_job
 from app.session import ScrapeSession
 
 
-def _record(item_id: int, name: str = "X") -> ProductRecord:
-    return ProductRecord(
+def _record(item_id: int, name: str = "X") -> ShopeeProductRecord:
+    return ShopeeProductRecord(
         item_id=item_id,
         product_name=name,
         scraped_at=datetime.now(timezone.utc),
@@ -63,8 +63,8 @@ async def test_product_update_mutates_record_and_emits_event(tmp_path: Path):
     items = [
         _record(1, "alpha"),
         _record(2, "beta"),
-        ProductUpdate(item_id=1, monthly_sold_count=42, monthly_sold_text="42 sold"),
-        ProductUpdate(item_id=999, monthly_sold_count=1),  # unknown id — must be dropped
+        ShopeeProductUpdate(item_id=1, monthly_sold_count=42, monthly_sold_text="42 sold"),
+        ShopeeProductUpdate(item_id=999, monthly_sold_count=1),  # unknown id — must be dropped
     ]
 
     await _run_job(**_job_kwargs(session, tmp_path, _stream(items)))
@@ -98,7 +98,7 @@ async def test_cancel_does_not_break_so_trailing_updates_drain(tmp_path: Path):
     so the generator can exit normally rather than via GeneratorExit.
 
     Simulates a scraper that yields two records, then notices the cancel
-    and runs its `finally:` block which yields a `ProductUpdate`. The
+    and runs its `finally:` block which yields a `ShopeeProductUpdate`. The
     runner must consume that update even though `cancel_event` is set.
     """
     session = ScrapeSession(id="t2", brand_id="b1", source_id="s1")
@@ -115,7 +115,7 @@ async def test_cancel_does_not_break_so_trailing_updates_drain(tmp_path: Path):
         finally:
             # Mirror the production scraper: emit harvested updates from
             # finally for items already yielded.
-            yield ProductUpdate(item_id=1, monthly_sold_count=99, monthly_sold_text="99")
+            yield ShopeeProductUpdate(item_id=1, monthly_sold_count=99, monthly_sold_text="99")
 
     await _run_job(**_job_kwargs(session, tmp_path, scraper_like()))
 
@@ -132,13 +132,13 @@ async def test_cancel_does_not_break_so_trailing_updates_drain(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_applies_rcmd_items_fields(tmp_path):
-    """ProductUpdate carries category_id/brand/likes/promos/voucher_code/
+    """ShopeeProductUpdate carries category_id/brand/likes/promos/voucher_code/
     voucher_discount; runner must apply each via the `if x is not None`
     guard. NOTE: `category` (display name) is intentionally NOT in the
     update — Shopee's harvest leaves that field for the official-site path."""
     session = ScrapeSession(id="t3", brand_id="b1", source_id="s1")
     rec = _record(42, "Boot")
-    upd = ProductUpdate(
+    upd = ShopeeProductUpdate(
         item_id=42,
         monthly_sold_count=15,
         monthly_sold_text="15 Sold/Month",
@@ -153,7 +153,10 @@ async def test_applies_rcmd_items_fields(tmp_path):
     final = json.loads((tmp_path / "partial.json").read_text())
     prod = next(r for r in final["records"] if r["item_id"] == 42)
     assert prod["category_id"] == "100011"
-    assert prod["category"] is None  # untouched — Shopee does not write display name
+    # `category` (the display name) is official-site-only after the
+    # per-platform schema split — it isn't a field on ShopeeProductRecord
+    # at all, so the dumped dict has no such key.
+    assert "category" not in prod
     assert prod["brand"] == "Levi's"
     assert prod["liked_count"] == 260
     assert prod["promotion_labels"] == ["Any 2 enjoy 5% off"]

@@ -132,12 +132,17 @@ class TestEnrichmentRequest:
 
 from datetime import datetime, timezone
 
-from app.models import ProductRecord, ProductUpdate
+from app.models import (
+    OfficialSiteProductRecord,
+    ShopeeProductRecord,
+    ShopeeProductUpdate,
+)
 
 
-class TestProductRecordMonthlySold:
+class TestShopeeProductRecordMonthlySold:
     def test_defaults_to_none(self):
-        rec = ProductRecord(
+        rec = ShopeeProductRecord(
+            item_id=1,
             product_name="x",
             scraped_at=datetime.now(timezone.utc),
         )
@@ -145,37 +150,39 @@ class TestProductRecordMonthlySold:
         assert rec.monthly_sold_text is None
 
     def test_round_trips_through_json(self):
-        rec = ProductRecord(
+        rec = ShopeeProductRecord(
+            item_id=1,
             product_name="x",
             scraped_at=datetime.now(timezone.utc),
             monthly_sold_count=42,
             monthly_sold_text="42 sold/mo",
         )
-        restored = ProductRecord.model_validate(rec.model_dump(mode="json"))
+        restored = ShopeeProductRecord.model_validate(rec.model_dump(mode="json"))
         assert restored.monthly_sold_count == 42
         assert restored.monthly_sold_text == "42 sold/mo"
 
 
-class TestProductUpdate:
+class TestShopeeProductUpdate:
     def test_minimal(self):
-        upd = ProductUpdate(item_id=123)
+        upd = ShopeeProductUpdate(item_id=123)
         assert upd.item_id == 123
         assert upd.monthly_sold_count is None
         assert upd.monthly_sold_text is None
 
     def test_round_trips(self):
-        upd = ProductUpdate(item_id=123, monthly_sold_count=42, monthly_sold_text="42 sold")
-        restored = ProductUpdate.model_validate(upd.model_dump(mode="json"))
+        upd = ShopeeProductUpdate(item_id=123, monthly_sold_count=42, monthly_sold_text="42 sold")
+        restored = ShopeeProductUpdate.model_validate(upd.model_dump(mode="json"))
         assert restored == upd
 
     def test_rejects_missing_item_id(self):
         with pytest.raises(ValueError):
-            ProductUpdate(monthly_sold_count=42)
+            ShopeeProductUpdate(monthly_sold_count=42)
 
 
-class TestProductRecordRcmdItemsFields:
+class TestShopeeProductRecordRcmdItemsFields:
     def test_new_fields_default_to_none_or_empty(self):
-        rec = ProductRecord(
+        rec = ShopeeProductRecord(
+            item_id=1,
             product_name="x",
             scraped_at=datetime.now(timezone.utc),
         )
@@ -187,12 +194,63 @@ class TestProductRecordRcmdItemsFields:
         assert rec.voucher_discount is None
 
 
-class TestProductUpdateRcmdItemsFields:
+class TestShopeeProductUpdateRcmdItemsFields:
     def test_new_fields_default_to_none(self):
-        upd = ProductUpdate(item_id=1)
+        upd = ShopeeProductUpdate(item_id=1)
         assert upd.category_id is None
         assert upd.brand is None
         assert upd.liked_count is None
         assert upd.promotion_labels is None
         assert upd.voucher_code is None
         assert upd.voucher_discount is None
+
+
+class TestOfficialSiteProductRecord:
+    def test_round_trips(self):
+        rec = OfficialSiteProductRecord(
+            product_name="x",
+            scraped_at=datetime.now(timezone.utc),
+            category="shoes",
+        )
+        restored = OfficialSiteProductRecord.model_validate(
+            rec.model_dump(mode="json")
+        )
+        assert restored.category == "shoes"
+        assert restored.product_name == "x"
+
+
+class TestProductRecordExtraIgnore:
+    """Loading legacy unified-schema run files: each record is a superset of
+    its platform's fields. `extra=ignore` on ProductRecordBase must silently
+    drop the foreign-platform fields rather than raising — otherwise old
+    run files can't be loaded after the split."""
+
+    def test_shopee_record_drops_official_site_fields(self):
+        # Legacy shape: a Shopee record with the official-site `category` field.
+        rec = ShopeeProductRecord.model_validate({
+            "item_id": 1,
+            "product_name": "x",
+            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "category": "ignored-on-shopee",
+        })
+        assert "category" not in rec.model_dump()
+
+    def test_official_site_record_drops_shopee_fields(self):
+        rec = OfficialSiteProductRecord.model_validate({
+            "product_name": "x",
+            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "item_id": 999,
+            "rating_star": 4.5,
+            "monthly_sold_count": 100,
+            "category_id": "abc",
+            "promotion_labels": ["A", "B"],
+        })
+        dumped = rec.model_dump()
+        for shopee_only in (
+            "item_id",
+            "rating_star",
+            "monthly_sold_count",
+            "category_id",
+            "promotion_labels",
+        ):
+            assert shopee_only not in dumped

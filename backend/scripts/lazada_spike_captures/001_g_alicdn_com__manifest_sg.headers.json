@@ -1,0 +1,39 @@
+{
+  "url": "https://g.alicdn.com/lzdfe/pwa-assets/5.0.7/manifest/sg.json",
+  "status": 200,
+  "request_method": "GET",
+  "request_headers": {
+    "accept": "*/*",
+    "origin": "https://www.lazada.sg",
+    "referer": "https://www.lazada.sg/shop/za-huo-dian-sg/",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "sec-ch-ua": "\"Google Chrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\""
+  },
+  "response_headers": {
+    "content-md5": "sPutIvodUxclJkoV4KrEjQ==",
+    "x-oss-storage-class": "Standard",
+    "content-encoding": "gzip",
+    "age": "65310",
+    "x-oss-object-type": "Normal",
+    "x-cache": "HIT TCP_MEM_HIT dirn:-2:-2",
+    "date": "Tue, 05 May 2026 10:20:53 GMT",
+    "x-oss-server-time": "12",
+    "content-type": "application/json",
+    "vary": "Accept-Encoding",
+    "x-bucket-code": "3",
+    "cache-control": "max-age=2592000,s-maxage=86400",
+    "x-swift-cachetime": "86400",
+    "timing-allow-origin": "*",
+    "x-oss-hash-crc64ecma": "3826090548053396821",
+    "via": "ens-cache4.l2sg7[343,343,200-0,M], ens-cache44.l2sg7[345,0], ens-cache44.l2sg7[346,0], ens-cache19.sg32[0,0,200-0,H], ens-cache15.sg32[4,0]",
+    "ali-swift-global-savetime": "1777976453",
+    "x-swift-savetime": "Tue, 05 May 2026 10:20:53 GMT",
+    "access-control-allow-origin": "*",
+    "eagleid": "2b6d27a317780417631538783e",
+    "content-length": "538",
+    "x-oss-request-id": "69F9C4859A4C88353891C7BA",
+    "server": "Tengine"
+  }
+}

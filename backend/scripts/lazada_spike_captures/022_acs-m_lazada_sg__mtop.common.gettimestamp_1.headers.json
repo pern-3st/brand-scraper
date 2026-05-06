@@ -1,0 +1,24 @@
+{
+  "url": "https://acs-m.lazada.sg/h5/mtop.common.gettimestamp/1.0/?jsv=2.7.2&appKey=24814220&t=1778045008549&sign=4497fc001e311a0b92b6d27f88503fd3&api=mtop.common.getTimestamp&v=1.0&H5Request=true&syncCookieMode=true&x-i18n-language=en&x-i18n-regionID=sg&type=jsonp&dataType=jsonp&callback=mtopjsonp5&data=%7B%7D",
+  "status": 200,
+  "request_method": "GET",
+  "request_headers": {
+    "accept": "*/*",
+    "cookie": "lzd_cid=1d307c65-3064-41e0-a320-751b652372c4; lwrid=AgGd%2B4w0yNbddfi5bExVxe5uI4RM; hng=SG|en-SG|SGD|702; _m_h5_tk=65bc8c7b6c99affb466a868d1ece6985_1778051123366; _m_h5_tk_enc=c857827749a12c46e005c87253da7335; xlly_s=1; t_fv=1778041763863; t_uid=OqRfC1cKETHwZ2IPDVJezdoBNxaruQBG; lwrtk=AAIEafs0IwjdNAGwi05Q0juGPJNVL5+0Hh3HHQo84j3AF8Ti3O08jq8=; cna=o7GBImumVmECAd8ZTUwPoqz2; _gcl_au=1.1.785902805.1778041764; _ga=GA1.2.278416466.1778041765; _gid=GA1.2.2094588344.1778041765; _fbp=fb.1.1778041765229.9007420574995522; AMCV_126E248D54200F960A4C98C6%40AdobeOrg=-1124106680%7CMCIDTS%7C20580%7CMCMID%7C67316111996883534101807012313170136498%7CMCAAMLH-1778646565%7C6%7CMCAAMB-1778646565%7C6G1ynYcLPuiQxYZrsz_pkqfLG9yMXBpb2zX5dvJdYQJzPXImdj0y%7CMCOPTOUT-1778048965s%7CNONE%7CvVersion%7C5.2.0; lzd_sid=130c17f09373bdbee330aee05990ba91; _tb_token_=7ebeb77d19e17; undefined_click_time=1778045005946; t_sid=AP68LcbaZdpO2FwCbME1oD32ELG157HI; utm_channel=NA; _gat_UA-49088239-1=1; _ga_4NNQCTZ3M8=GS2.2.s1778045007$o2$g1$t1778045007$j60$l0$h0; _uetsid=29a913c0490411f1bc4d236016b61776; _uetvid=29a92780490411f195879dca60705c92; isg=BHp6ncFDxw9wT0tjd0DlAB9wy6acK_4F9T6k7oRzJo3YdxqxbLtOFUCBwwurZ3ad; tfstk=gIonf-_MN51bVNfwm_rBW9Ta_CYOvkZ79bI8wuFy75P196IKULqoKbmJdYPdZfDrTWF8YaEojXM09yRSJu0u6YGLT0D5q8krNpNJdFHIduZyMQ0kDvMCc9fswCEyUAr8E9r9-RkIdu6_WjHDKvtlKaP7Lulzb5yL3u7UaMJg78w34MzPYNPa18rz4MyF_5yYhM7zzbkwI8NaaurralJgF5Pz4u8l6OPLL8nwg_Lhlhnqyc23-SkH5gSojiU3gvPG4IogKINqL5fPZSS5JnMraQj80qGiqrlvqGZKnVraKVvP7Wzm8XesZnjUTcDEYWne6MFEAAux2fJP470ZuzuqLCQgIVkKjPn2ig4I7Xgbr0d9ck3xH0aqYHfb6rwoikuM_McV4g7NuEGCVRJ-ba_78RwgMJR3KBugMuq9Idbqlyy_LVnJIajCGgSQUdvGlZ4UCJuN.; epssw=12*glpa6wrGGI60-johyFoG0c_mC6Ph1FriDkoHNAqSMFczlGGGl-IGt6XFV-5CSqbI4RWGGGG3f086XxnJb046b19OgFvSyJBGvW78cT8j4-kpe-iTCcLH7GroeTglFrMhRGpyXu7wayOumwiPrIGGXOLWZr6_V8zYkC0ov_ppGICYtsaNPsL_EF7eEpUgNVj8EOwC-1ZSyDeihypeEf0GG6N1szSiGRMM1G6xPqT4-GU7GC1x_By6jwzRJrPLkkyaeiyIKkgJYWvBAJtiRN23Hp9-yBBu_alM46MiJ43U8oClD4zyZgbiN4EE02AS",
+    "referer": "https://www.lazada.sg/shop/za-huo-dian-sg/",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "sec-ch-ua": "\"Google Chrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\""
+  },
+  "response_headers": {
+    "s-rt": "2",
+    "eagleeye-traceid": "0bb4ab0717780450085702594e9632",
+    "x-aserver-sret": "SUCCESS",
+    "x-paramkey": "mtop.common.getTimestamp",
+    "content-length": "121",
+    "date": "Wed, 06 May 2026 05:23:28 GMT",
+    "content-type": "application/json;charset=UTF-8",
+    "server": "Tengine/Aserver"
+  }
+}

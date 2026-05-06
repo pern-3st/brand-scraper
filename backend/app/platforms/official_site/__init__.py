@@ -11,7 +11,7 @@ from browser_use.tools.service import Tools
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
-from app.models import OfficialSiteScrapeRequest, ProductRecord
+from app.models import OfficialSiteProductRecord, OfficialSiteScrapeRequest
 from app.platforms._browser_use import (
     FALLBACK_MODEL,
     SanitizedChatOpenAI,
@@ -609,7 +609,7 @@ async def _scrape_category(
     max_products: int,
     cancel_event: asyncio.Event,
     skip_menu_navigation: bool = False,
-) -> list[ProductRecord]:
+) -> list[OfficialSiteProductRecord]:
     """Drive a navigator agent + a loop of per-page agents to collect up to
     `max_products` items from one category. See
     docs/plans/2026-04-23-per-page-agent-orchestration.md for rationale."""
@@ -703,7 +703,7 @@ async def _scrape_category(
 
     now = datetime.now(timezone.utc)
     return [
-        ProductRecord(
+        OfficialSiteProductRecord(
             product_name=p.name,
             product_url=p.url,
             image_url=p.image_url,
@@ -792,7 +792,7 @@ class OfficialSiteScraper:
         self,
         request: OfficialSiteScrapeRequest,
         ctx: ScrapeContext,
-    ) -> AsyncIterator[ProductRecord]:
+    ) -> AsyncIterator[OfficialSiteProductRecord]:
         llm = build_llm()
         browser = BrowserSession(browser_profile=build_browser_profile())
 

@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
+from app.platforms.lazada.models import LazadaScrapeRequest
 from app.platforms.shopee.models import ShopeeScrapeRequest  # forward; created in Phase 2B
 
 
@@ -19,26 +20,25 @@ class OfficialSiteScrapeRequest(BaseModel):
 
 
 ScrapeRequest = Annotated[
-    Union[OfficialSiteScrapeRequest, ShopeeScrapeRequest],
+    Union[OfficialSiteScrapeRequest, ShopeeScrapeRequest, LazadaScrapeRequest],
     Field(discriminator="platform"),
 ]
 
 
-class ProductRecord(BaseModel):
-    """Unified per-product record emitted by every scraper.
-
-    Core fields are shared. Platform-specific fields default to None/False
-    and are populated only by their originating scraper:
-      - Shopee: item_id, rating_star, historical_sold_count, monthly_sold_count,
-        category_id, brand, liked_count, promotion_labels, voucher_code,
-        voucher_discount
-      - Official-site: category
+class ProductRecordBase(BaseModel):
+    """Fields populated by every scraper, regardless of platform.
 
     Platform identity is carried by the enclosing run's `_meta.platform`,
     not on each record — otherwise we'd duplicate that flag across every
     item in a run of potentially hundreds.
     """
-    # Core (populated by every scraper)
+    # `extra=ignore` is load-bearing for back-compat: existing run files
+    # were written when ProductRecord was a single union model carrying
+    # every platform's fields. After this split, loading those files via
+    # ShopeeProductRecord.model_validate(...) silently drops the
+    # official-site-only `category` (and vice versa) instead of erroring.
+    model_config = {"extra": "ignore"}
+
     product_name: str
     product_url: str | None = None
     image_url: str | None = None
@@ -49,14 +49,15 @@ class ProductRecord(BaseModel):
     is_sold_out: bool = False
     scraped_at: datetime
 
-    # Shopee-only
-    item_id: int | None = None
+
+class ShopeeProductRecord(ProductRecordBase):
+    item_id: int
     rating_star: float | None = None
     historical_sold_count: int | None = None
     monthly_sold_count: int | None = None
     monthly_sold_text: str | None = None  # human-formatted, e.g. "1.2K"
 
-    # Shopee-only — harvested from /api/v4/shop/rcmd_items
+    # Harvested from /api/v4/shop/rcmd_items
     category_id: str | None = None  # 6-digit "global" catid; stored as str so the UI doesn't render it as a thousands-separated number
     brand: str | None = None
     liked_count: int | None = None
@@ -64,12 +65,69 @@ class ProductRecord(BaseModel):
     voucher_code: str | None = None
     voucher_discount: int | None = None  # Shopee 1e5 micro-units (900000 = SGD 9.00 off)
 
-    # Official-site-only
+
+class OfficialSiteProductRecord(ProductRecordBase):
     category: str | None = None
 
 
-class ProductUpdate(BaseModel):
-    """Late-arriving partial update for a previously-yielded ProductRecord.
+class LazadaProductRecord(ProductRecordBase):
+    # Identification
+    item_id: int                           # auctionId
+    sku_id: int | None = None              # skuId
+    sku: str | None = None                 # combined "<auctionId>_<region>-<skuId>"
+
+    # Pricing extras
+    saved_text: str | None = None          # "$25.00 saved"
+
+    # Promotion
+    # Opaque string — observed values include promPrice / flashSale /
+    # mockedSalePrice; treat as free-form, don't gate logic on the enum.
+    hit_promotion: str | None = None
+    promotion_start_time: int | None = None  # ms epoch (0/None when absent)
+    promotion_end_time: int | None = None    # ms epoch
+    promotion_labels: list[str] = Field(default_factory=list)  # recommendTexts[].titleText
+
+    # Stock & shipping
+    free_shipping: bool = False
+    mall: bool = False                     # LazMall flag
+
+    # Popularity / reviews
+    rating: float | None = None
+    review_count: int | None = None
+    # Volume units unverified (Q3 in the spike notes) — stored under volume_*
+    # rather than monthly_sold_count to avoid mislabelling before confirmation.
+    volume_monthly: int | None = None      # volumePayOrdPrdQty1m
+    volume_weekly: int | None = None       # volumePayOrdPrdQty1w
+    volume_total: int | None = None        # volumePayOrdPrdQtyStd
+
+    # Shop / brand / category — *_name fields are filled by metadata
+    # resolution from the shop landing's lzdPcPageData + categories tree;
+    # they are not present in the catalog payload.
+    shop_id: int | None = None
+    seller_id: int | None = None
+    brand_id: int | None = None
+    brand_name: str | None = None
+    category_id: int | None = None
+    category_name: str | None = None       # leaf only
+    category_lineage: list[str] = Field(default_factory=list)  # root → leaf names
+
+
+# Type alias for code that genuinely takes any platform's record.
+ProductRecord = ShopeeProductRecord | OfficialSiteProductRecord | LazadaProductRecord
+
+
+# Single source of truth: platform → record class. Used by the runner
+# (loading parent-run records for enrichment) and by get_unified_table
+# (building per-platform column descriptors).
+RECORD_CLASSES: dict[str, type[ProductRecordBase]] = {
+    "shopee": ShopeeProductRecord,
+    "official_site": OfficialSiteProductRecord,
+    "lazada": LazadaProductRecord,
+}
+
+
+class ShopeeProductUpdate(BaseModel):
+    """Late-arriving partial update for a previously-yielded ShopeeProductRecord.
 
     Shopee's rcmd_items XHR delivers monthly_sold + category_id + brand + likes
     + promo metadata + voucher details asynchronously from grid extraction.
