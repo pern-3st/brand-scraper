@@ -354,7 +354,11 @@ async def test_stream_enrichments_paces_between_products(mocked_browser, monkeyp
 def test_build_browser_profile_uses_persistent_user_data_dir(tmp_path, monkeypatch):
     from app.platforms import _browser_use
 
-    monkeypatch.setattr(_browser_use, "DATA_ROOT", tmp_path / "brands")
+    monkeypatch.setattr(
+        _browser_use,
+        "OFFICIAL_SITE_PROFILE_DIR",
+        tmp_path / "browser-use-user-data-dir-official_site",
+    )
     profile = _browser_use.build_browser_profile()
     assert profile.user_data_dir is not None
     udir = Path(profile.user_data_dir)
@@ -366,7 +370,11 @@ def test_build_browser_profile_uses_persistent_user_data_dir(tmp_path, monkeypat
 def test_build_browser_profile_reuses_same_dir_across_calls(tmp_path, monkeypatch):
     from app.platforms import _browser_use
 
-    monkeypatch.setattr(_browser_use, "DATA_ROOT", tmp_path / "brands")
+    monkeypatch.setattr(
+        _browser_use,
+        "OFFICIAL_SITE_PROFILE_DIR",
+        tmp_path / "browser-use-user-data-dir-official_site",
+    )
     p1 = _browser_use.build_browser_profile()
     p2 = _browser_use.build_browser_profile()
     assert p1.user_data_dir == p2.user_data_dir

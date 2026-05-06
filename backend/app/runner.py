@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, Callable
 from pydantic import BaseModel, TypeAdapter
 
 from app.brands import BrandRepo, compute_run_aggregates, new_enrichment_id
+from app.paths import BRANDS_DIR
 from app.models import (
     EnrichmentRequest,
     EnrichmentRow,
@@ -71,8 +72,7 @@ PRODUCT_IDENTITIES: dict[str, ProductIdentity] = {
     "lazada": LazadaProductIdentity(),
 }
 
-DATA_ROOT = Path(__file__).resolve().parent.parent / "data" / "brands"
-_repo = BrandRepo(root=DATA_ROOT)
+_repo = BrandRepo(root=BRANDS_DIR)
 _request_adapter = TypeAdapter(ScrapeRequest)
 
 

@@ -17,12 +17,9 @@ from patchright.async_api import async_playwright
 
 log = logging.getLogger(__name__)
 
-# Resolve to backend/data/browser_profiles/lazada_sg. File layout:
-#   backend/app/platforms/lazada/__init__.py
-#   parents[0] = lazada/  parents[1] = platforms/
-#   parents[2] = app/     parents[3] = backend/
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
-PROFILE_DIR = BACKEND_ROOT / "data" / "browser_profiles" / "lazada_sg"
+from app.paths import BROWSER_PROFILES_DIR
+
+PROFILE_DIR = BROWSER_PROFILES_DIR / "lazada_sg"
 
 # Files chrome writes into ``user_data_dir`` to claim exclusive ownership;
 # can outlive the parent process and block the next launch_persistent_context

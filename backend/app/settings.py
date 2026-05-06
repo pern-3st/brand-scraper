@@ -1,17 +1,17 @@
 """Local runtime settings (OpenRouter key/model).
 
-Stored as a plaintext JSON file in `backend/data/settings.json` so the user
-can edit via the UI without touching the repo. Falls back to env vars when
-the file is absent or a field is empty — preserves the old `.env` flow.
+Stored as a plaintext JSON file inside the per-user data directory (see
+``app.paths``) so the user can edit via the UI without touching the repo.
+Falls back to env vars when the file is absent or a field is empty —
+preserves the old `.env` flow.
 """
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 from typing import Any
 
-SETTINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "settings.json"
+from app.paths import SETTINGS_PATH
 
 DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
 

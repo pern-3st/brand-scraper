@@ -11,6 +11,25 @@ if not exist "%~dp0.setup_complete" (
     if errorlevel 1 (echo Setup failed. Aborting. & popd & pause & exit /b 1)
 )
 
+REM --- Detect a broken venv (e.g. user moved the folder after setup) and rebuild ---
+REM    The trampolines in backend\.venv\Scripts\*.exe hardcode absolute paths
+REM    on non-relocatable venvs, producing "uv trampoline failed to canonicalize
+REM    script path" once the folder is moved. Older installs predate the
+REM    --relocatable change in setup.bat, so we self-heal here.
+if exist "backend\.venv\Scripts\python.exe" (
+    "backend\.venv\Scripts\python.exe" -c "" >nul 2>nul
+    if errorlevel 1 (
+        echo Detected broken Python environment ^(folder likely moved^). Rebuilding backend\.venv ...
+        rmdir /s /q "backend\.venv"
+        pushd backend
+        call uv venv --relocatable
+        if errorlevel 1 (echo ERROR: uv venv failed & popd & popd & pause & exit /b 1)
+        call uv sync
+        if errorlevel 1 (echo ERROR: uv sync failed & popd & popd & pause & exit /b 1)
+        popd
+    )
+)
+
 REM --- Ensure ports 8000 and 3000 are free ---
 call :check_port 8000 Backend
 if errorlevel 1 (popd & pause & exit /b 1)

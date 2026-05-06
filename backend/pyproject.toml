@@ -9,6 +9,7 @@ dependencies = [
     "langchain-openai>=1.1.9",
     "markdownify>=0.11.6",
     "patchright>=1.58.2",
+    "platformdirs>=4.3",
     "playwright>=1.58.0",
     "pydantic>=2.12.5",
     "uvicorn>=0.44.0",

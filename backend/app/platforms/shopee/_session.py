@@ -24,12 +24,9 @@ from app.platforms.shopee.extract import GRID_CARD_SELECTOR
 
 log = logging.getLogger(__name__)
 
-# Resolve to backend/data/browser_profiles/shopee_sg. File layout:
-#   backend/app/platforms/shopee/__init__.py
-#   parents[0] = shopee/  parents[1] = platforms/
-#   parents[2] = app/     parents[3] = backend/
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
-PROFILE_DIR = BACKEND_ROOT / "data" / "browser_profiles" / "shopee_sg"
+from app.paths import BROWSER_PROFILES_DIR
+
+PROFILE_DIR = BROWSER_PROFILES_DIR / "shopee_sg"
 
 CARD_WAIT_MS = 10_000
 

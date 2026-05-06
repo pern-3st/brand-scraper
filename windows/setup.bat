@@ -60,6 +60,14 @@ REM --- Sync backend ---
 echo.
 echo Syncing backend dependencies (uv sync)...
 pushd backend
+REM Create venv with --relocatable so the recipient can move the extracted
+REM folder later without breaking the Scripts\*.exe trampolines. Standard
+REM venvs hardcode absolute paths and fail with "uv trampoline failed to
+REM canonicalize script path" once moved.
+if not exist ".venv" (
+    call uv venv --relocatable
+    if errorlevel 1 (echo ERROR: uv venv failed & popd & popd & pause & exit /b 1)
+)
 call uv sync
 if errorlevel 1 (echo ERROR: uv sync failed & popd & popd & pause & exit /b 1)
 

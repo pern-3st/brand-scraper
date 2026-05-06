@@ -27,9 +27,14 @@ from app import settings
 logger = logging.getLogger(__name__)
 
 
-# Mirrors ``app.runner.DATA_ROOT``; inlined to avoid a circular import
-# (runner imports from this module's neighbours).
-DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "brands"
+from app.paths import HIDDEN_BROWSER_PROFILES_DIR
+
+# Embeds the literal ``browser-use-user-data-dir-`` substring so browser_use's
+# BrowserProfile._copy_profile (model_post_init) short-circuits and reuses
+# the persistent dir instead of cloning it into a fresh tempdir each launch.
+OFFICIAL_SITE_PROFILE_DIR: Path = (
+    HIDDEN_BROWSER_PROFILES_DIR / "browser-use-user-data-dir-official_site"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -366,9 +371,7 @@ def build_browser_profile() -> BrowserProfile:
     cookie-aging we want). See ``BrowserProfile._copy_profile`` —
     line 808 short-circuits when that substring appears in the path.
     """
-    user_data_dir = (
-        DATA_ROOT.parent / ".browser_profiles" / "browser-use-user-data-dir-official_site"
-    )
+    user_data_dir = OFFICIAL_SITE_PROFILE_DIR
     user_data_dir.mkdir(parents=True, exist_ok=True)
     return BrowserProfile(
         headless=False,

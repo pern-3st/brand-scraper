@@ -21,15 +21,11 @@ from patchright.async_api import async_playwright
 
 log = logging.getLogger(__name__)
 
-# Resolve to backend/. File layout:
-#   backend/app/platforms/official_site/_session.py
-#   parents[0] = official_site/  parents[1] = platforms/
-#   parents[2] = app/            parents[3] = backend/
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
+from app.paths import HIDDEN_BROWSER_PROFILES_DIR
 
 
 def profile_dir() -> Path:
-    return BACKEND_ROOT / "data" / ".browser_profiles" / "official_site_patchright"
+    return HIDDEN_BROWSER_PROFILES_DIR / "official_site_patchright"
 
 
 def ensure_profile_dir() -> Path:
