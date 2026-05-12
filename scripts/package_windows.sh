@@ -10,6 +10,23 @@ OUT_DIR="dist"
 STAGE="$OUT_DIR/brand_scraper_windows"
 ZIP="$OUT_DIR/brand_scraper_windows.zip"
 
+# The staging step below uses `git ls-files`, which only includes tracked
+# files. Any modified-but-uncommitted or untracked file will silently be
+# missing from the zip and the recipient hits a ModuleNotFoundError on
+# first run. Force a confirmation before we package anything dirty.
+DIRTY="$(git status --porcelain)"
+if [[ -n "$DIRTY" ]]; then
+  echo "WARNING: working tree has uncommitted changes:"
+  echo "$DIRTY" | sed 's/^/  /'
+  echo
+  echo "git ls-files only ships tracked files — anything above will be MISSING from the zip."
+  read -r -p "Continue packaging anyway? [y/N] " ans
+  case "$ans" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted. Commit your changes and re-run."; exit 1 ;;
+  esac
+fi
+
 rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
 
