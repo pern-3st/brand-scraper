@@ -20,7 +20,7 @@ def _read_file() -> dict[str, Any]:
     if not SETTINGS_PATH.exists():
         return {}
     try:
-        return json.loads(SETTINGS_PATH.read_text())
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -48,7 +48,7 @@ def save(
         current["openrouter_model"] = openrouter_model
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = SETTINGS_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(current, indent=2))
+    tmp.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
     tmp.replace(SETTINGS_PATH)
 
 

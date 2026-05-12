@@ -37,5 +37,5 @@ def write_records(
         record_key: [r.model_dump(mode="json") for r in records],
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)

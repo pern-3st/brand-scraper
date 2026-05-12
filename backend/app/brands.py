@@ -90,7 +90,7 @@ class BrandRepo:
                 if not sj.exists():
                     continue
                 try:
-                    data = json.loads(sj.read_text())
+                    data = json.loads(sj.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     continue
                 if isinstance(data.get("name"), str) and data["name"]:
@@ -104,7 +104,7 @@ class BrandRepo:
                 if not isinstance(derived, str) or not derived:
                     derived = data.get("id", "unnamed")
                 data["name"] = derived
-                sj.write_text(json.dumps(data, indent=2))
+                sj.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def _brand_dir(self, brand_id: str) -> Path:
         return self.root / brand_id
@@ -117,14 +117,16 @@ class BrandRepo:
         brand_dir.mkdir(parents=True)
         (brand_dir / "sources").mkdir()
         brand = Brand(id=brand_id, name=name, created_at=_now_iso())
-        (brand_dir / "brand.json").write_text(json.dumps(asdict(brand), indent=2))
+        (brand_dir / "brand.json").write_text(
+            json.dumps(asdict(brand), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return brand
 
     def get_brand(self, brand_id: str) -> Brand | None:
         path = self._brand_dir(brand_id) / "brand.json"
         if not path.exists():
             return None
-        return Brand(**json.loads(path.read_text()))
+        return Brand(**json.loads(path.read_text(encoding="utf-8")))
 
     def delete_brand(self, brand_id: str) -> bool:
         import shutil
@@ -141,7 +143,7 @@ class BrandRepo:
         for brand_dir in sorted(self.root.iterdir()):
             bj = brand_dir / "brand.json"
             if bj.exists():
-                brands.append(Brand(**json.loads(bj.read_text())))
+                brands.append(Brand(**json.loads(bj.read_text(encoding="utf-8"))))
         return brands
 
     # --- sources ---
@@ -169,14 +171,16 @@ class BrandRepo:
             spec=spec,
             created_at=_now_iso(),
         )
-        (sdir / "source.json").write_text(json.dumps(asdict(source), indent=2))
+        (sdir / "source.json").write_text(
+            json.dumps(asdict(source), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return source
 
     def get_source(self, brand_id: str, source_id: str) -> "Source | None":
         path = self._source_dir(brand_id, source_id) / "source.json"
         if not path.exists():
             return None
-        return Source(**json.loads(path.read_text()))
+        return Source(**json.loads(path.read_text(encoding="utf-8")))
 
     def list_sources(self, brand_id: str) -> list["Source"]:
         sdir = self._sources_dir(brand_id)
@@ -186,7 +190,7 @@ class BrandRepo:
         for child in sorted(sdir.iterdir()):
             sj = child / "source.json"
             if sj.exists():
-                out.append(Source(**json.loads(sj.read_text())))
+                out.append(Source(**json.loads(sj.read_text(encoding="utf-8"))))
         return out
 
     def update_source(
@@ -209,7 +213,7 @@ class BrandRepo:
             created_at=existing.created_at,
         )
         path = self._source_dir(brand_id, source_id) / "source.json"
-        path.write_text(json.dumps(asdict(updated), indent=2))
+        path.write_text(json.dumps(asdict(updated), indent=2, ensure_ascii=False), encoding="utf-8")
         return updated
 
     def delete_source(self, brand_id: str, source_id: str) -> bool:
@@ -247,7 +251,7 @@ class BrandRepo:
 
         out: list[RunSummary] = []
         for run_id, p in by_id.items():
-            data = json.loads(p.read_text())
+            data = json.loads(p.read_text(encoding="utf-8"))
             meta = data.get("_meta", {}) or {}
             agg = meta.get("aggregates", {}) or {}
             out.append(RunSummary(
@@ -263,10 +267,10 @@ class BrandRepo:
         rdir = self._runs_dir(brand_id, source_id)
         final = rdir / f"{run_id}.json"
         if final.exists():
-            return json.loads(final.read_text())
+            return json.loads(final.read_text(encoding="utf-8"))
         partial = rdir / f"{run_id}.partial.json"
         if partial.exists():
-            return json.loads(partial.read_text())
+            return json.loads(partial.read_text(encoding="utf-8"))
         return None
 
     def delete_run(self, brand_id: str, source_id: str, run_id: str) -> bool:
@@ -376,7 +380,7 @@ class BrandRepo:
                 by_id[eid] = p
         out: list[dict[str, Any]] = []
         for eid, path in by_id.items():
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             meta = data.get("_meta", {}) or {}
             out.append({
                 "id": eid,
@@ -524,10 +528,10 @@ class BrandRepo:
         edir = self._enrichments_dir(brand_id, source_id, run_id)
         final = edir / f"{enrichment_id}.json"
         if final.exists():
-            return json.loads(final.read_text())
+            return json.loads(final.read_text(encoding="utf-8"))
         partial = edir / f"{enrichment_id}.partial.json"
         if partial.exists():
-            return json.loads(partial.read_text())
+            return json.loads(partial.read_text(encoding="utf-8"))
         return None
 
     def delete_enrichment(
