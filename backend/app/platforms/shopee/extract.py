@@ -28,17 +28,54 @@ def shop_handle_from_url(shop_url: str) -> str:
     return path.split("/")[0]
 
 
-async def extract_grid_items(page: Page) -> list[dict]:
-    """Run EXTRACT_JS against the current page and return one dict per card."""
-    return await page.evaluate(EXTRACT_JS, GRID_CARD_SELECTOR)
+async def extract_grid_items(page: Page, locale: dict) -> list[dict]:
+    """Run EXTRACT_JS against the current page and return one dict per card.
+
+    ``locale`` comes from ``locales.resolve_locale(shop_url)`` and tells
+    the JS extractor how to recognise and parse prices in this region's
+    currency. See ``locales.py`` for the schema.
+    """
+    args = {
+        "sel": GRID_CARD_SELECTOR,
+        "glyph": locale["glyph"],
+        "glyphPos": locale["glyph_pos"],
+        "thousands": locale["thousands"],
+        "decimal": locale["decimal"],
+    }
+    return await page.evaluate(EXTRACT_JS, args)
 
 
-# Verbatim from backend/scripts/shopee_spike.py::EXTRACT_JS. Do not edit —
-# every quirk in it (the strikethrough ancestor walk, the $-regex-after-
+# Originally lifted verbatim from backend/scripts/shopee_spike.py::EXTRACT_JS.
+# Every quirk (the strikethrough ancestor walk, the $-regex-after-
 # whitespace-strip, the susercontent alt-tag filter, the rating leaf
 # detection) corresponds to a bug or edge case the spike burned time on.
+# 2026-05-10: parameterised price/MRP regexes by ``locale`` so the same
+# extractor works on shopee.com.my (RM), .ph (₱), .co.th (฿), .vn (₫),
+# .co.id (Rp). Pre-fix, the price regex required a literal ``$`` and
+# silently null-ed prices on every non-SG/TW/BR market.
 EXTRACT_JS = r"""
-(sel) => {
+(args) => {
+    const { sel, glyph, glyphPos, thousands, decimal } = args;
+    const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const glyphRe = escapeRe(glyph);
+    // Anchored detector for "this stripped text is a single price leaf"
+    // — used by the strikethrough/MRP loop to find which leaf carries
+    // the original price. Permissive on glyph position so a market
+    // configured as prefix still matches a stray suffix-rendered amount
+    // (and vice versa).
+    const moneyLeafRe = new RegExp(
+        '^(?:' + glyphRe + '[\\d.,]+|[\\d.,]+' + glyphRe + ')$'
+    );
+    const parseAmount = (s) => {
+        // s is the digit/separator run only (glyph already stripped).
+        if (decimal === ',') {
+            // VN/ID: dots are thousands, comma is decimal.
+            return parseFloat(s.replace(/\./g, '').replace(',', '.'));
+        }
+        // SG/MY/PH/TH: commas are thousands, dot is decimal.
+        return parseFloat(s.replace(/,/g, ''));
+    };
+
     const cards = document.querySelectorAll(sel);
     const results = [];
     for (const card of cards) {
@@ -92,8 +129,13 @@ EXTRACT_JS = r"""
         }
         if (priceText) {
             const stripped = priceText.replace(/\s+/g, '');
-            const m = stripped.match(/\$([\d.,]+)/);
-            if (m) row.price = parseFloat(m[1].replace(/,/g, ''));
+            // First numeric run inside the price-marker container —
+            // the container is already isolated by the aria-label
+            // selector, so we don't need glyph-anchored matching here.
+            // Range prices like "RM58.50-RM64.90" yield the lower bound,
+            // matching pre-fix behaviour on SG ("$54.90-$64.90").
+            const m = stripped.match(/[\d.,]+/);
+            if (m) row.price = parseAmount(m[0]);
         }
 
         // --- MRP via computed text-decoration: line-through ---
@@ -115,21 +157,21 @@ EXTRACT_JS = r"""
         };
         for (const el of card.querySelectorAll('*')) {
             const stripped = (el.textContent || '').replace(/\s+/g, '');
-            if (!/^\$[\d.,]/.test(stripped)) continue;
+            if (!moneyLeafRe.test(stripped)) continue;
             // Skip parent elements whose textContent merges multiple
-            // $-amounts (e.g. "$54.90$64.90"). We want the smallest container
-            // wrapping a single $-amount, so we can attribute strikethrough
-            // styling correctly.
+            // amounts (e.g. "RM54.90RM64.90"). We want the smallest
+            // container wrapping a single amount so strikethrough
+            // styling attributes correctly.
             let hasMoneyChild = false;
             for (const child of el.children) {
                 const ct = (child.textContent || '').replace(/\s+/g, '');
-                if (/^\$[\d.,]/.test(ct)) { hasMoneyChild = true; break; }
+                if (moneyLeafRe.test(ct)) { hasMoneyChild = true; break; }
             }
             if (hasMoneyChild) continue;
             if (!isStrikethrough(el)) continue;
-            const m = stripped.match(/\$([\d.,]+)/);
+            const m = stripped.match(/[\d.,]+/);
             if (m) {
-                row.mrp = parseFloat(m[1].replace(/,/g, ''));
+                row.mrp = parseAmount(m[0]);
                 break;
             }
         }

@@ -27,13 +27,16 @@ _APP_NAME = "BrandScraper"
 _LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
-def _resolve() -> Path:
+def _resolve() -> tuple[Path, bool]:
+    """Return (data_dir, is_user_override). Migration only runs when the
+    user has NOT explicitly chosen a path — otherwise an env-var override
+    pointed at an empty/temp dir would silently swallow the legacy data."""
     override = os.environ.get("BRAND_SCRAPER_DATA_DIR")
     if override:
-        return Path(override).expanduser().resolve()
+        return Path(override).expanduser().resolve(), True
     # appauthor=False suppresses the per-vendor segment Windows would otherwise
     # inject (we want %LOCALAPPDATA%\BrandScraper, not %LOCALAPPDATA%\Anthropic\BrandScraper).
-    return Path(platformdirs.user_data_dir(_APP_NAME, appauthor=False))
+    return Path(platformdirs.user_data_dir(_APP_NAME, appauthor=False)), False
 
 
 def _migrate_legacy(target: Path) -> None:
@@ -48,8 +51,9 @@ def _migrate_legacy(target: Path) -> None:
     shutil.move(str(_LEGACY_DATA_DIR), str(target))
 
 
-DATA_DIR: Path = _resolve()
-_migrate_legacy(DATA_DIR)
+DATA_DIR, _is_override = _resolve()
+if not _is_override:
+    _migrate_legacy(DATA_DIR)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 BRANDS_DIR: Path = DATA_DIR / "brands"

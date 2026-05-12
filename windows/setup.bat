@@ -15,6 +15,13 @@ REM --- Locate repo root (this script lives in windows\) ---
 set "ROOT=%~dp0.."
 pushd "%ROOT%" || (echo Failed to cd to repo root & exit /b 1)
 
+REM --- Force uv to copy instead of hardlink. Required when the extracted
+REM     folder lives under OneDrive / a cloud-synced location: NTFS refuses
+REM     to hardlink into a cloud-placeholder file and uv fails with
+REM     "The cloud operation cannot be performed on a file with incompatible
+REM     hardlinks. (os error 396)".
+set "UV_LINK_MODE=copy"
+
 REM --- Check winget is available ---
 where winget >nul 2>nul
 if errorlevel 1 (

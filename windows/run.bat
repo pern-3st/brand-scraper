@@ -4,6 +4,9 @@ setlocal enableextensions
 set "ROOT=%~dp0.."
 pushd "%ROOT%" || (echo Failed to cd to repo root & exit /b 1)
 
+REM --- Force uv to copy instead of hardlink (OneDrive-safe). See setup.bat. ---
+set "UV_LINK_MODE=copy"
+
 REM --- Run setup if not yet done ---
 if not exist "%~dp0.setup_complete" (
     echo First-time setup required. Running setup.bat...

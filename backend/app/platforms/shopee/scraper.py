@@ -50,6 +50,7 @@ from app.platforms.shopee.extract import (
     extract_grid_items,
     shop_handle_from_url,
 )
+from app.platforms.shopee.locales import resolve_locale
 from app.platforms.shopee.models import ShopeeScrapeRequest
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class ShopeeScraper:
         ctx: ScrapeContext,
     ) -> AsyncIterator[ShopeeProductRecord | ShopeeProductUpdate]:
         shop_url = str(request.shop_url)
+        locale = resolve_locale(shop_url)
         max_products = request.max_products
 
         cumulative: set[int] = set()
@@ -120,7 +122,7 @@ class ShopeeScraper:
                     if ctx.cancel_event.is_set():
                         return
 
-                    items = await extract_grid_items(page)
+                    items = await extract_grid_items(page, locale)
                     new_items = [
                         it for it in items if it.get("item_id") not in cumulative
                     ]
@@ -136,7 +138,7 @@ class ShopeeScraper:
                     for it in new_items:
                         if yielded >= max_products:
                             return
-                        rec = _to_record(it)
+                        rec = _to_record(it, locale["currency"])
                         if rec is None:
                             log.warning("shopee: dropping malformed card %s", it)
                             continue
@@ -196,7 +198,7 @@ class ShopeeScraper:
                 )
 
 
-def _to_record(item: dict) -> ShopeeProductRecord | None:
+def _to_record(item: dict, currency: str) -> ShopeeProductRecord | None:
     """Convert an extract_grid_items dict into a ShopeeProductRecord.
 
     Returns None if required Shopee fields (item_id, product_name,
@@ -210,7 +212,7 @@ def _to_record(item: dict) -> ShopeeProductRecord | None:
             image_url=item.get("image_url"),
             price=item.get("price"),
             mrp=item.get("mrp"),
-            currency="SGD",
+            currency=currency,
             discount_pct=item.get("discount_pct"),
             rating_star=item.get("rating_star"),
             historical_sold_count=item.get("historical_sold_count"),
